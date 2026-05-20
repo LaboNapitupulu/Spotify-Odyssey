@@ -4,7 +4,7 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg?style=for-the-badge)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
 
-> 🎥 **Pratinjau Dasbor:**
+> 🎥 **[Pratinjau Dasbor](https://spotify-odyssey.streamlit.app/):**
 > 
 > ![Demo Spotify Odyssey](https://media.discordapp.net/attachments/756442876170207263/1506467444376604743/image.png?ex=6a0e5ea3&is=6a0d0d23&hm=85902b0f0dc5dcffa3a5fb8debb85d6ebfd20188654efcebe811998ae41a35b8&=&format=webp&quality=lossless&width=1866&height=834)
 
