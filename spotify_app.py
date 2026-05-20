@@ -47,7 +47,11 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-# 2. INISIALISASI API & GENERATE TOKEN
+# 2. INISIALISASI API & PENYELUNDUPAN CLOUD
+if "cache" in st.secrets["spotify"]:
+    with open(".cache", "w") as f:
+        f.write(st.secrets["spotify"]["cache"])
+
 @st.cache_resource
 def get_spotify_client():
     client_id = st.secrets["spotify"]["client_id"]
@@ -62,17 +66,13 @@ def get_spotify_client():
     return spotipy.Spotify(auth_manager=auth_manager), auth_manager
 
 sp, sp_auth = get_spotify_client()
+
 token_info = sp_auth.get_cached_token()
-
-if not token_info:
-    sp_auth.get_access_token(as_dict=False)
-    token_info = sp_auth.get_cached_token()
-
-if not token_info:
-    ACCESS_TOKEN = sp_auth.get_access_token(as_dict=False)
-else:
+if token_info:
     ACCESS_TOKEN = token_info['access_token']
-
+else:
+    ACCESS_TOKEN = ""
+    st.error("Failed to retrieve Spotify access token. Please check your credentials and re-run the app. ")
 
 # 3. FUNGSI DATA & HELPER GRAFIK
 def clean_query(text):
