@@ -232,7 +232,7 @@ if not df_filtered.empty:
     if total_days <= 0: total_days = 1
     
     c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("Airtime", f"{df_filtered['duration_min'].sum()/60:,.0f} Jam")
+    c1.metric("Airtime", f"{df_filtered['duration_min'].sum()/60:,.0f} hours")
     c2.metric("Total Tracks", f"{df_filtered['track_name'].nunique():,}")
     c3.metric("Total Artists", f"{df_filtered['artist_name'].nunique():,}")
     c4.metric("Avg Streams/Day", f"{len(df_filtered) / total_days:,.0f}")
