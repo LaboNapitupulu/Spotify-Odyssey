@@ -6,7 +6,7 @@
 
 > 🎥 **[Pratinjau Dasbor](https://spotify-odyssey.streamlit.app/):**
 > 
-> ![Demo Spotify Odyssey](https://media.discordapp.net/attachments/756442876170207263/1506467444376604743/image.png?ex=6a0e5ea3&is=6a0d0d23&hm=85902b0f0dc5dcffa3a5fb8debb85d6ebfd20188654efcebe811998ae41a35b8&=&format=webp&quality=lossless&width=1866&height=834)
+> ![Demo Spotify Odyssey](https://media.discordapp.net/attachments/756442876170207263/1506467444376604743/image.png?ex=6a1647a3&is=6a14f623&hm=9b433684d8fc40a814b9e9e69752a40418d5c153b22e6ee59e4f668d8cdd4259&=&format=webp&quality=lossless&width=1866&height=834)
 
 **Spotify Odyssey** merupakan platform dasbor analitik interaktif berbasis web yang memadukan arsitektur pemrosesan data historis berskala besar menggunakan **Python (Pandas & Plotly)** dengan integrasi **JavaScript Asinkron** di sisi klien (*client-side*) untuk pelacakan aktivitas pemutaran musik secara *real-time*.
 
