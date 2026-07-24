@@ -1,0 +1,37 @@
+# 1. KREDENSIAL & RAHASIA 
+# Menyembunyikan konfigurasi Streamlit lokal (berisi Client ID & Secret)
+.streamlit/
+.streamlit/secrets.toml
+
+# Menyembunyikan token akses Spotify API otomatis agar akun tidak dibajak
+.cache
+
+# Menyembunyikan file environment variables 
+.env
+
+# 2. DATA PRIVASI PRIBADI
+# Menyembunyikan folder data mentah (JSON riwayat asli dari Spotify)
+data_raw/
+
+# 3. CACHE PYTHON & JUPYTER NOTEBOOK
+# Mengabaikan file hasil kompilasi Python yang tidak perlu diunggah
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Mengabaikan riwayat penyimpanan sementara dari Jupyter Notebook
+.ipynb_checkpoints/
+
+# 4. VIRTUAL ENVIRONMENT
+# Mengabaikan folder environment lokal agar tidak memberatkan repository
+venv/
+env/
+.venv/
+
+# 5. OS GENERATED FILES
+# Mengabaikan file sistem bawaan Mac/Windows
+.DS_Store
+Thumbs.db
+# Menyembunyikan database SQLite (Privasi)
+data_processed/

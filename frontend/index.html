@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spotify Odyssey</title>
+    <link rel="icon" href="https://storage.googleapis.com/pr-newsroom-wp/1/2018/11/Spotify_Logo_RGB_Green.png">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    <!-- Chart.js for lightweight charts -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+</head>
+<body>
+    <div id="global-loader" class="hidden">
+        <div class="spinner"></div>
+    </div>
+    
+    <!-- Sidebar -->
+    <aside class="sidebar">
+        <img src="https://storage.googleapis.com/pr-newsroom-wp/1/2018/11/Spotify_Logo_RGB_Green.png" alt="Spotify" class="logo">
+        <div class="status-badge">⚡ JS Live Engine: Active</div>
+        <hr>
+        <div class="filter-section">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                <p class="filter-title" style="margin: 0;">Historical Year:</p>
+                <label class="custom-toggle">
+                    <input type="checkbox" id="multi-select-toggle">
+                    <span class="toggle-slider"></span>
+                    <span class="toggle-text">Multi-Select</span>
+                </label>
+            </div>
+            <div class="checkbox-group" id="year-filters">
+                <!-- Checkboxes populated by JS -->
+            </div>
+        </div>
+        
+        <div class="filter-section">
+            <p class="filter-title">Show Top List:</p>
+            <input type="range" id="top-n-slider" min="10" max="100" step="10" value="10">
+            <span id="top-n-value" style="color:#1DB954; font-weight: bold; margin-left:10px;">10</span>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        
+        <!-- KPI Metrics -->
+        <section class="kpi-grid">
+            <div class="kpi-card">
+                <div class="kpi-label">Airtime</div>
+                <div class="kpi-value" id="kpi-airtime">-</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">Total Tracks</div>
+                <div class="kpi-value" id="kpi-tracks">-</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">Total Artists</div>
+                <div class="kpi-value" id="kpi-artists">-</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">Avg Streams/Day</div>
+                <div class="kpi-value" id="kpi-avg-streams">-</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">Avg Minutes/Day</div>
+                <div class="kpi-value" id="kpi-avg-min">-</div>
+            </div>
+        </section>
+
+        <!-- Listening Clocks -->
+        <div class="section-header">⏱️ Listening Clocks</div>
+        <section class="charts-grid-2">
+            <div class="chart-container">
+                <canvas id="clock-streams"></canvas>
+            </div>
+            <div class="chart-container">
+                <canvas id="clock-minutes"></canvas>
+            </div>
+        </section>
+
+        <!-- Time Analytics -->
+        <div class="section-header">📈 Time Analytics</div>
+        <section class="chart-full">
+            <div class="chart-container">
+                <canvas id="trend-daily"></canvas>
+            </div>
+        </section>
+        <section class="charts-grid-2">
+            <div class="chart-container">
+                <canvas id="trend-dow"></canvas>
+            </div>
+            <div class="chart-container">
+                <canvas id="trend-monthly"></canvas>
+            </div>
+        </section>
+
+        <!-- Hall of Fame -->
+        <div class="section-header">🏆 Hall of Fame</div>
+        <section class="charts-grid-3">
+            <div class="hof-column">
+                <h3>Top Artists</h3>
+                <div class="column-wrapper" id="hof-artists"></div>
+            </div>
+            <div class="hof-column">
+                <h3>Top Albums</h3>
+                <div class="column-wrapper" id="hof-albums"></div>
+            </div>
+            <div class="hof-column">
+                <h3>Top Songs</h3>
+                <div class="column-wrapper" id="hof-songs"></div>
+            </div>
+        </section>
+        
+        <!-- Live Recently Played -->
+        <div class="section-header">📡 Live Pulse: Recently Played</div>
+        <section class="table-container">
+            <table id="recent-table">
+                <thead>
+                    <tr>
+                        <th style="width: 65px;">Cover</th>
+                        <th style="width: 140px;">Time Played</th>
+                        <th>Track Title</th>
+                        <th>Artist</th>
+                    </tr>
+                </thead>
+                <tbody id="recent-tbody">
+                    <tr><td colspan="4" style="text-align:center; color:#475569; padding: 30px;">📡 Loading last 50 played tracks...</td></tr>
+                </tbody>
+            </table>
+        </section>
+        
+        <!-- Padding at bottom for Now Playing Bar -->
+        <div style="height: 100px;"></div>
+    </main>
+
+    <!-- Now Playing Bar (Fixed Bottom) -->
+    <div id="np-container"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>
