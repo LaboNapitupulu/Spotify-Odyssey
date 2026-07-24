@@ -8,6 +8,8 @@ import toml
 import os
 import re
 from fastapi.responses import JSONResponse
+import pandas as pd
+from datetime import datetime
 
 from backend import database
 
@@ -201,6 +203,48 @@ def api_recently_played(limit: int = 50):
                 "image_url": track['album']['images'][2]['url'] if len(track['album']['images']) > 2 else (track['album']['images'][0]['url'] if track['album']['images'] else "")
             })
         return {"items": items}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.get("/api/sync")
+def api_sync_spotify():
+    if not sp: return JSONResponse({"error": "Spotify client not initialized"}, status_code=500)
+    try:
+        conn = database.get_db_connection()
+        c = conn.cursor()
+        
+        c.execute("SELECT MAX(timestamp) FROM listening_history")
+        last_timestamp_str = c.fetchone()[0]
+        if last_timestamp_str:
+            last_timestamp = pd.to_datetime(last_timestamp_str).tz_localize(None)
+        else:
+            last_timestamp = datetime(1970, 1, 1)
+            
+        results = sp.current_user_recently_played(limit=50)
+        new_data_list = []
+        for item in results['items']:
+            played_at = pd.to_datetime(item['played_at']).tz_convert('Asia/Jakarta').tz_localize(None)
+            if played_at > last_timestamp:
+                track = item['track']
+                new_data_list.append((
+                    played_at.strftime('%Y-%m-%d %H:%M:%S'),
+                    track['duration_ms'], track['name'], track['artists'][0]['name'], track['album']['name'],
+                    'API_Auto_Update', 'API_Auto_Update', False,
+                    played_at.year, played_at.month, played_at.day_name(), played_at.hour,
+                    track['duration_ms'] / 60000.0
+                ))
+                
+        if new_data_list:
+            new_data_list.reverse()
+            c.executemany('''
+                INSERT INTO listening_history 
+                (timestamp, duration_ms, track_name, artist_name, album_name, reason_start, reason_end, skipped, year, month, day_name, hour, duration_min)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ''', new_data_list)
+            conn.commit()
+            
+        conn.close()
+        return {"status": "success", "inserted": len(new_data_list)}
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 
