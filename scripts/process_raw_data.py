@@ -1,10 +1,17 @@
 import pandas as pd
 import glob
 import os
-import sqlite3
+import psycopg2
+from sqlalchemy import create_engine
+import toml
+import sys
+
+# Add parent directory to path so we can import from backend
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from backend.database import get_db_url, get_db_connection
 
 def process_and_append_data():
-    print("Starting Spotify Raw Data Processor...")
+    print("Starting Spotify Raw Data Processor (PostgreSQL Version)...")
     
     # 1. READ RAW JSON
     raw_path = os.path.join("..", "data_raw")
@@ -62,20 +69,20 @@ def process_and_append_data():
     # Strip timezone for DB storage
     df_clean['timestamp'] = df_clean['timestamp'].dt.tz_localize(None)
     
-    # 3. CONNECT TO SQLITE & SMART APPEND
-    db_path = os.path.join("..", "data_processed", "spotify_data.db")
-    if not os.path.exists(os.path.dirname(db_path)):
-        db_path = os.path.join("data_processed", "spotify_data.db")
+    # 3. CONNECT TO POSTGRESQL & SMART APPEND
+    try:
+        conn = get_db_connection()
+        c = conn.cursor()
+    except Exception as e:
+        print(f"Failed to connect to database: {e}")
+        return
         
-    conn = sqlite3.connect(db_path)
-    c = conn.cursor()
-    
     # Get max timestamp
     c.execute("SELECT MAX(timestamp) FROM listening_history")
     last_timestamp_str = c.fetchone()[0]
     
     if last_timestamp_str:
-        # Convert DB string to datetime for comparison
+        # Postgres driver already returns datetime object
         last_timestamp = pd.to_datetime(last_timestamp_str)
         print(f"Latest record in DB: {last_timestamp}")
         
@@ -85,24 +92,29 @@ def process_and_append_data():
         print("Database is empty. Inserting all processed rows.")
         new_rows = df_clean.copy()
         
+    conn.close()
+        
     if new_rows.empty:
         print("No new records to insert. Database is already up to date with these files.")
-        conn.close()
         return
         
     print(f"Found {new_rows.shape[0]} new records to insert.")
     
-    # Format timestamp explicitly as string to match collector
-    new_rows['timestamp'] = new_rows['timestamp'].dt.strftime('%Y-%m-%d %H:%M:%S')
-    
-    # Ensure boolean type is native python bool before inserting
+    # Formatting for to_sql
+    # Postgres uses actual timestamps, pandas to_sql handles datetime objects natively
     new_rows['skipped'] = new_rows['skipped'].astype(bool)
     
-    # Append to DB
-    new_rows.to_sql('listening_history', conn, if_exists='append', index=False)
+    # Pandas requires SQLAlchemy engine to append to Postgres
+    db_url = get_db_url()
+    # Supabase uses 'postgresql://', sometimes 'postgres://'. SQLAlchemy requires 'postgresql://'
+    if db_url.startswith("postgres://"):
+        db_url = db_url.replace("postgres://", "postgresql://", 1)
+        
+    engine = create_engine(db_url)
     
-    conn.commit()
-    conn.close()
+    # Append to DB
+    print("Writing to database (this may take a few seconds)...")
+    new_rows.to_sql('listening_history', engine, if_exists='append', index=False, method='multi', chunksize=1000)
     
     print("Successfully appended new data to the database!")
 

@@ -1,12 +1,12 @@
 import os
-import sqlite3
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 import toml
 from datetime import datetime
 import pandas as pd
+from backend.database import get_db_connection, PostgresCacheHandler
 
-print("Starting Spotify Data Collector (SQLite Version)...")
+print("Starting Spotify Data Collector (PostgreSQL Version)...")
 
 # 1. READ CREDENTIALS
 try:
@@ -23,23 +23,23 @@ sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
     client_id=CLIENT_ID,
     client_secret=CLIENT_SECRET,
     redirect_uri=REDIRECT_URI,
-    scope='user-read-recently-played'
+    scope='user-read-recently-played user-read-currently-playing user-read-playback-state',
+    cache_handler=PostgresCacheHandler()
 ))
 
-# 3. CONNECT TO SQLITE
-db_path = os.path.join("data_processed", "spotify_data.db")
-if not os.path.exists(db_path):
-    print("Database not found. Please run migration script first.")
+# 3. CONNECT TO POSTGRES
+try:
+    conn = get_db_connection()
+    c = conn.cursor()
+except Exception as e:
+    print(f"Failed to connect to database: {e}")
     exit()
-
-conn = sqlite3.connect(db_path)
-c = conn.cursor()
 
 # Get the latest timestamp in the DB to avoid duplicates
 c.execute("SELECT MAX(timestamp) FROM listening_history")
 last_timestamp_str = c.fetchone()[0]
 if last_timestamp_str:
-    # Remove milliseconds if any, for simple comparison
+    # Postgres already returns a datetime object for timestamps!
     last_timestamp = pd.to_datetime(last_timestamp_str).tz_localize(None)
 else:
     # If DB is empty, set a very old date
@@ -69,7 +69,7 @@ for item in results['items']:
             track['album']['name'],
             'API_Auto_Update', # reason_start
             'API_Auto_Update', # reason_end
-            0, # skipped (False)
+            False, # skipped (False in Postgres is a boolean)
             played_at.year,
             played_at.month,
             played_at.day_name(),
@@ -83,10 +83,11 @@ if new_data_list:
     # Reverse to insert oldest first
     new_data_list.reverse()
     
+    # Postgres uses %s instead of ?
     c.executemany('''
         INSERT INTO listening_history 
         (timestamp, duration_ms, track_name, artist_name, album_name, reason_start, reason_end, skipped, year, month, day_name, hour, duration_min)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
     ''', new_data_list)
     
     conn.commit()

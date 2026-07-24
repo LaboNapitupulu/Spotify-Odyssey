@@ -30,26 +30,18 @@ def get_spotify_client():
         client_id = secrets["spotify"]["client_id"]
         client_secret = secrets["spotify"]["client_secret"]
         redirect_uri = secrets["spotify"]["redirect_uri"]
-        
-        # If cache string is in secrets, save it (like the original app did)
-        if "cache" in secrets["spotify"]:
-            cache_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".cache")
-            with open(cache_path, "w") as f:
-                f.write(secrets["spotify"]["cache"])
-                
     except Exception:
         # Fallback for testing if secrets.toml isn't there
         client_id = os.getenv("SPOTIFY_CLIENT_ID")
         client_secret = os.getenv("SPOTIFY_CLIENT_SECRET")
         redirect_uri = os.getenv("SPOTIFY_REDIRECT_URI", "http://127.0.0.1:8080/")
 
-    cache_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".cache")
     auth_manager = SpotifyOAuth(
         client_id=client_id, 
         client_secret=client_secret, 
         redirect_uri=redirect_uri, 
         scope='user-read-recently-played user-read-currently-playing user-read-playback-state',
-        cache_path=cache_path
+        cache_handler=database.PostgresCacheHandler()
     )
     return spotipy.Spotify(auth_manager=auth_manager)
 
@@ -69,13 +61,12 @@ try:
     client_secret = secrets["spotify"]["client_secret"]
     redirect_uri = secrets["spotify"]["redirect_uri"]
     
-    cache_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".cache")
     auth_manager = NonBlockingSpotifyOAuth(
         client_id=client_id, 
         client_secret=client_secret, 
         redirect_uri=redirect_uri, 
         scope='user-read-recently-played user-read-currently-playing user-read-playback-state',
-        cache_path=cache_path,
+        cache_handler=database.PostgresCacheHandler(),
         open_browser=False
     )
     sp = spotipy.Spotify(auth_manager=auth_manager)

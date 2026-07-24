@@ -2,6 +2,7 @@ import os
 import toml
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
+from backend.database import PostgresCacheHandler
 
 secrets_path = os.path.join(".streamlit", "secrets.toml")
 secrets = toml.load(secrets_path)
@@ -23,11 +24,11 @@ auth_manager = SpotifyOAuth(
     client_secret=client_secret, 
     redirect_uri=redirect_uri, 
     scope='user-read-recently-played user-read-currently-playing user-read-playback-state',
-    cache_path=".cache",
+    cache_handler=PostgresCacheHandler(),
     open_browser=True
 )
 
 sp = spotipy.Spotify(auth_manager=auth_manager)
 sp.current_user_playing_track()
-print("\n[+] Berhasil! Token baru dengan scope lengkap telah tersimpan.")
+print("\n[+] Berhasil! Token baru dengan scope lengkap telah tersimpan di Database Supabase Anda.")
 print("[+] Anda bisa menjalankan kembali server backend.")

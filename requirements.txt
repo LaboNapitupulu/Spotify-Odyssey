@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+spotipy
+pandas
+toml
+psycopg2-binary
+SQLAlchemy
