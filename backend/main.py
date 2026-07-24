@@ -58,11 +58,16 @@ sp = None
 sp_public = None
 try:
     secrets_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".streamlit", "secrets.toml")
-    secrets = toml.load(secrets_path)
-    client_id = secrets["spotify"]["client_id"]
-    client_secret = secrets["spotify"]["client_secret"]
-    redirect_uri = secrets["spotify"]["redirect_uri"]
-    
+    if os.path.exists(secrets_path):
+        secrets = toml.load(secrets_path)
+        client_id = secrets["spotify"]["client_id"]
+        client_secret = secrets["spotify"]["client_secret"]
+        redirect_uri = secrets["spotify"]["redirect_uri"]
+    else:
+        client_id = os.environ.get("SPOTIFY_CLIENT_ID")
+        client_secret = os.environ.get("SPOTIFY_CLIENT_SECRET")
+        redirect_uri = os.environ.get("SPOTIFY_REDIRECT_URI", "http://127.0.0.1:8080")
+        
     auth_manager = NonBlockingSpotifyOAuth(
         client_id=client_id, 
         client_secret=client_secret, 
