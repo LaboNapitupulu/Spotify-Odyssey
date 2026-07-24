@@ -1,45 +1,90 @@
-# Spotify Odyssey
+# Spotify Odyssey: Personal Audio Analytics
 
-A lightweight, real-time dashboard built to track and visualize my personal Spotify listening history. 
+A full-stack, real-time analytics dashboard engineered to track, process, and visualize personal Spotify streaming history. 
 
-Instead of waiting for Spotify Wrapped at the end of the year, I built this full-stack app to give me a live, interactive look at my listening habits whenever I want.
+![Python](https://img.shields.io/badge/Python-3.9%2B-blue?style=flat-square&logo=python)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.95%2B-009688?style=flat-square&logo=fastapi)
+![SQLite](https://img.shields.io/badge/SQLite-Data%2B-lightgrey?style=flat-square&logo=sqlite)
+![JavaScript](https://img.shields.io/badge/JavaScript-Vanilla-F7DF1E?style=flat-square&logo=javascript)
 
-## Features
+---
 
-- **Live Pulse:** Connects to the Spotify API to show the exact song I am listening to right now in real-time.
-- **Interactive Cross-Filtering:** Click on any month in the bar chart, and the entire dashboard (KPIs, Hall of Fame, Clocks) automatically filters to show data for just that month.
+## Project Overview
+
+Instead of relying on end-of-year summaries like Spotify Wrapped, this application provides an interactive, live look at listening habits. It integrates directly with the Spotify Web API to process raw streaming JSON data and fetch live playback states, presenting the insights through a custom-built, zero-framework dashboard.
+
+---
+
+## Core Features
+
+- **Live Pulse (Real-Time Playback):** Connects to the Spotify API to display the currently playing track in real-time.
+- **Interactive Data Cross-Filtering:** Features an interactive dashboard architecture where selecting a specific metric (e.g., a month in the bar chart) automatically recalculates and filters all other components (KPIs, top tracks, time-of-day clocks) without page reloads.
 - **Automated Data Pipeline:** 
-  - Parses Spotify's massive "Extended Streaming History" JSON dumps into a fast SQLite database.
-  - Includes a background collector script (`spotify_collector.py`) that automatically fetches my 50 most recent streams and appends them to the database, so the data never gets stale.
-- **Custom UI:** A zero-framework vanilla frontend styled from scratch to match Spotify's sleek dark mode aesthetic.
+  - Ingests and parses massive "Extended Streaming History" JSON dumps into a highly indexed SQLite database.
+  - Implements a background collector script (`spotify_collector.py`) that periodically fetches the 50 most recent streams and appends them to the database to ensure data currency.
+- **Custom UI Architecture:** A zero-dependency vanilla frontend constructed from scratch, styled to match modern dark-mode design systems.
 
-## Tech Stack
+---
+
+## Technical Stack
 
 - **Backend:** Python, FastAPI, SQLite
-- **Frontend:** Vanilla JS, CSS3, HTML5, Chart.js
-- **API:** Spotipy (Spotify Web API)
+- **Data Processing:** Pandas
+- **API Integration:** Spotipy (Spotify Web API)
+- **Frontend:** Vanilla JavaScript, HTML5, CSS3, Chart.js
 
-## Setup & Installation
+---
 
-If you want to run this with your own Spotify data:
+## Getting Started
 
-1. Clone the repository.
-2. Install the required Python packages:
-   ```bash
-   pip install fastapi uvicorn spotipy pandas
-   ```
-3. Create a `.streamlit/secrets.toml` file and add your Spotify Developer credentials (Client ID, Secret, and Redirect URI).
-4. Run `python auth_spotify.py` to authenticate your account.
-5. Place your downloaded Spotify JSON history files into the `data_raw/` directory.
-6. Run the initial data processor to build your SQLite database:
-   ```bash
-   python scripts/process_raw_data.py
-   ```
-7. Start the API server:
-   ```bash
-   python -m uvicorn backend.main:app --port 8000
-   ```
-8. Just open `frontend/index.html` in any web browser.
+### Prerequisites
+- Python 3.9+
+- A Spotify Developer account (Client ID & Client Secret)
 
-## Privacy Note
-The `.gitignore` is set up to block `data_processed/spotify_data.db` and any credential files. Your private listening history will not be pushed to GitHub.
+### Installation & Setup
+
+**1. Clone the repository:**
+```bash
+git clone https://github.com/LaboNapitupulu/ProjectSpotify.git
+cd ProjectSpotify
+```
+
+**2. Install backend dependencies:**
+```bash
+pip install fastapi uvicorn spotipy pandas
+```
+
+**3. Configure Spotify Credentials:**
+Create a `.streamlit/secrets.toml` file in the project root and add your Spotify Developer credentials:
+```toml
+[spotify]
+client_id = "YOUR_CLIENT_ID"
+client_secret = "YOUR_CLIENT_SECRET"
+redirect_uri = "http://localhost:8080"
+```
+
+**4. Authenticate Account:**
+Run the authentication script to generate your user token:
+```bash
+python auth_spotify.py
+```
+
+**5. Ingest Raw Data:**
+Place your downloaded Spotify JSON history files into the `data_raw/` directory, then execute the data processor to build the SQLite database:
+```bash
+python scripts/process_raw_data.py
+```
+
+**6. Start the API Server:**
+```bash
+python -m uvicorn backend.main:app --port 8000
+```
+
+**7. Launch the Application:**
+Open `frontend/index.html` in any modern web browser to view the dashboard.
+
+---
+
+## Privacy Notice
+
+The `.gitignore` configuration strictly blocks `data_processed/spotify_data.db` and any credential files. Personal streaming history and API tokens will never be pushed to version control.
