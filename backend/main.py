@@ -76,11 +76,11 @@ try:
         cache_handler=database.PostgresCacheHandler(),
         open_browser=False
     )
-    sp = spotipy.Spotify(auth_manager=auth_manager)
+    sp = spotipy.Spotify(auth_manager=auth_manager, retries=0, requests_timeout=10)
     
     # Public client for artwork fetching (no user auth required)
     public_auth = SpotifyClientCredentials(client_id=client_id, client_secret=client_secret)
-    sp_public = spotipy.Spotify(auth_manager=public_auth)
+    sp_public = spotipy.Spotify(auth_manager=public_auth, retries=0, requests_timeout=10)
 except Exception as e:
     print(f"Warning: Could not initialize Spotify client: {e}")
 

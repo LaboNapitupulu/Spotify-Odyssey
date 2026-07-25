@@ -514,7 +514,13 @@ let lastPlayedAt = null;
 async function fetchRecentlyPlayed() {
     try {
         const res = await fetch(`${API_BASE}/spotify/recently-played?limit=10`);
-        if (!res.ok) return;
+        if (!res.ok) {
+            const tbody = document.getElementById('recent-tbody');
+            if (tbody.innerHTML.includes("Loading last 50 played tracks...")) {
+                tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; color:#94a3b8; padding: 20px;">Spotify API Rate Limit 😴<br><small>Sistem sedang tidur sementara. Silakan kembali lagi nanti.</small></td></tr>`;
+            }
+            return;
+        }
         const data = await res.json();
         
         if (data.items && data.items.length > 0) {
@@ -543,10 +549,10 @@ async function fetchRecentlyPlayed() {
     }
 }
 
-// Initial fetch and set interval for real-time updates (every 10 seconds)
+// Initial fetch and set interval for real-time updates (every 60 seconds to prevent rate limits)
 fetchLivePulse();
 fetchRecentlyPlayed();
 setInterval(() => {
     fetchLivePulse();
     fetchRecentlyPlayed();
-}, 10000);
+}, 60000);
