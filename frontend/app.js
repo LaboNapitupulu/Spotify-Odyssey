@@ -270,14 +270,18 @@ function getCardHTML(idx, type, title, subtitle, value, img, artistName=null) {
     const subHTML = subtitle ? `<p class="list-subtitle">${subtitle}</p>` : "";
     const safeTitle = title.replace(/"/g, '&quot;');
     const safeArtist = artistName ? artistName.replace(/"/g, '&quot;') : '';
-    // If we already have an image (from cache), mark it loaded immediately; otherwise shimmer shows
-    const imgSrc = img || '';
-    const loadedClass = imgSrc ? 'loaded' : '';
+
+    // KEY FIX: If no image URL yet, omit src entirely.
+    // src="" causes browsers to fire onerror IMMEDIATELY (shows ugly fallback icon).
+    // With no src, the img-loader shimmer stays visible until we set src via JS.
+    const srcAttr = img ? `src="${img}"` : '';
+    const loadedClass = img ? 'loaded' : '';
+
     return `
         <div class="list-card" style="animation-delay: ${delay}s;">
             <div class="list-rank">#${idx+1}</div>
             <div class="img-loader ${isArtist ? 'artist' : ''}">
-                <img src="${imgSrc}"
+                <img ${srcAttr}
                      class="${loadedClass}"
                      data-name="${safeTitle}" data-type="${type}" data-artist="${safeArtist}"
                      onload="this.classList.add('loaded')"
@@ -291,6 +295,7 @@ function getCardHTML(idx, type, title, subtitle, value, img, artistName=null) {
         </div>
     `;
 }
+
 
 function renderHallOfFame(data) {
     let artHTML = "";
