@@ -4,15 +4,23 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Spotify Odyssey</title>
+    <meta name="description" content="Dashboard personal untuk memvisualisasikan riwayat mendengarkan musik Spotify Anda.">
     <link rel="icon" href="https://storage.googleapis.com/pr-newsroom-wp/1/2018/11/Spotify_Logo_RGB_Green.png">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
-    <!-- Chart.js for lightweight charts -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
 </head>
 <body>
+    <!-- Mobile Overlay Backdrop -->
+    <div id="sidebar-overlay"></div>
+
+    <!-- Mobile Hamburger Button -->
+    <button id="hamburger-btn" aria-label="Open menu">
+        <span></span><span></span><span></span>
+    </button>
+
     <div id="global-loader" class="hidden">
         <div class="spinner"></div>
     </div>
@@ -28,17 +36,17 @@
                 <label class="custom-toggle">
                     <input type="checkbox" id="multi-select-toggle">
                     <span class="toggle-slider"></span>
-                    <span class="toggle-text">Multi-Select</span>
+                    <span class="toggle-text">Multi</span>
                 </label>
             </div>
             <div class="checkbox-group" id="year-filters">
-                <!-- Checkboxes populated by JS -->
+                <!-- Chips populated by JS -->
             </div>
         </div>
         
         <div class="filter-section">
             <p class="filter-title">Show Top List:</p>
-            <input type="range" id="top-n-slider" min="10" max="100" step="10" value="10">
+            <input type="range" id="top-n-slider" min="10" max="100" step="10" value="10" style="width:100%;">
             <span id="top-n-value" style="color:#1DB954; font-weight: bold; margin-left:10px;">10</span>
         </div>
     </aside>
@@ -117,19 +125,21 @@
         <!-- Live Recently Played -->
         <div class="section-header">📡 Live Pulse: Recently Played</div>
         <section class="table-container">
-            <table id="recent-table">
-                <thead>
-                    <tr>
-                        <th style="width: 65px;">Cover</th>
-                        <th style="width: 140px;">Time Played</th>
-                        <th>Track Title</th>
-                        <th>Artist</th>
-                    </tr>
-                </thead>
-                <tbody id="recent-tbody">
-                    <tr><td colspan="4" style="text-align:center; color:#475569; padding: 30px;">📡 Loading last 50 played tracks...</td></tr>
-                </tbody>
-            </table>
+            <div class="table-scroll-wrapper">
+                <table id="recent-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 55px;">Cover</th>
+                            <th style="width: 120px;">Time</th>
+                            <th>Track Title</th>
+                            <th style="width: 130px;">Artist</th>
+                        </tr>
+                    </thead>
+                    <tbody id="recent-tbody">
+                        <tr><td colspan="4" style="text-align:center; color:#475569; padding: 30px;">📡 Loading last 10 played tracks...</td></tr>
+                    </tbody>
+                </table>
+            </div>
         </section>
         
         <!-- Padding at bottom for Now Playing Bar -->
@@ -138,6 +148,9 @@
 
     <!-- Now Playing Bar (Fixed Bottom) -->
     <div id="np-container"></div>
+
+    <!-- Toast container -->
+    <div id="toast-container"></div>
 
     <script src="app.js"></script>
 </body>

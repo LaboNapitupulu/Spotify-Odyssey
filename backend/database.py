@@ -73,23 +73,26 @@ init_db()
 
 def get_cached_artwork(cache_key: str) -> Optional[str]:
     conn = get_db_connection()
-    c = conn.cursor()
-    c.execute("SELECT image_url FROM artwork_cache WHERE cache_key = %s", (cache_key,))
-    row = c.fetchone()
-    conn.close()
-    return row['image_url'] if row else None
+    try:
+        c = conn.cursor()
+        c.execute("SELECT image_url FROM artwork_cache WHERE cache_key = %s", (cache_key,))
+        row = c.fetchone()
+        return row['image_url'] if row else None
+    finally:
+        conn.close()
 
 def set_cached_artwork(cache_key: str, image_url: str):
     conn = get_db_connection()
-    c = conn.cursor()
-    # Postgres ON CONFLICT UPSERT syntax
-    c.execute('''
-        INSERT INTO artwork_cache (cache_key, image_url) 
-        VALUES (%s, %s)
-        ON CONFLICT (cache_key) DO UPDATE SET image_url = EXCLUDED.image_url
-    ''', (cache_key, image_url))
-    conn.commit()
-    conn.close()
+    try:
+        c = conn.cursor()
+        c.execute('''
+            INSERT INTO artwork_cache (cache_key, image_url) 
+            VALUES (%s, %s)
+            ON CONFLICT (cache_key) DO UPDATE SET image_url = EXCLUDED.image_url
+        ''', (cache_key, image_url))
+        conn.commit()
+    finally:
+        conn.close()
 
 def _build_where(years, month):
     clauses = []
@@ -107,117 +110,96 @@ def _build_where(years, month):
 
 def get_kpi_stats(years: List[int] = None, month: int = None):
     conn = get_db_connection()
-    c = conn.cursor()
-    
-    query = "SELECT SUM(duration_min) as total_min, COUNT(DISTINCT track_name) as total_tracks, COUNT(DISTINCT artist_name) as total_artists, MIN(timestamp) as min_date, MAX(timestamp) as max_date, COUNT(*) as total_streams FROM listening_history"
-    where_clause, params = _build_where(years, month)
-    query += where_clause
+    try:
+        c = conn.cursor()
+        query = "SELECT SUM(duration_min) as total_min, COUNT(DISTINCT track_name) as total_tracks, COUNT(DISTINCT artist_name) as total_artists, MIN(timestamp) as min_date, MAX(timestamp) as max_date, COUNT(*) as total_streams FROM listening_history"
+        where_clause, params = _build_where(years, month)
+        query += where_clause
+        c.execute(query, params)
+        row = c.fetchone()
         
-    c.execute(query, params)
-    row = c.fetchone()
-    
-    if not row or not row['min_date']:
+        if not row or not row['min_date']:
+            return {}
+            
+        min_d = row['min_date']
+        max_d = row['max_date']
+        total_days = max(1, (max_d - min_d).days + 1)
+        
+        return {
+            "airtime_hours": (row['total_min'] or 0) / 60,
+            "total_tracks": row['total_tracks'],
+            "total_artists": row['total_artists'],
+            "avg_streams_per_day": row['total_streams'] / total_days,
+            "avg_min_per_day": (row['total_min'] or 0) / total_days
+        }
+    finally:
         conn.close()
-        return {}
-        
-    # Postgres returns datetime objects directly for timestamps!
-    min_d = row['min_date']
-    max_d = row['max_date']
-    total_days = (max_d - min_d).days + 1
-    if total_days <= 0: total_days = 1
-    
-    res = {
-        "airtime_hours": (row['total_min'] or 0) / 60,
-        "total_tracks": row['total_tracks'],
-        "total_artists": row['total_artists'],
-        "avg_streams_per_day": row['total_streams'] / total_days,
-        "avg_min_per_day": (row['total_min'] or 0) / total_days
-    }
-    conn.close()
-    return res
 
 def get_hourly_clock(years: List[int] = None, month: int = None):
     conn = get_db_connection()
-    c = conn.cursor()
-    
-    query = "SELECT hour, COUNT(track_name) as streams, SUM(duration_min) as minutes FROM listening_history"
-    where_clause, params = _build_where(years, month)
-    query += where_clause
+    try:
+        c = conn.cursor()
+        query = "SELECT hour, COUNT(track_name) as streams, SUM(duration_min) as minutes FROM listening_history"
+        where_clause, params = _build_where(years, month)
+        query += where_clause + " GROUP BY hour ORDER BY hour"
+        c.execute(query, params)
+        rows = c.fetchall()
         
-    query += " GROUP BY hour ORDER BY hour"
-    
-    c.execute(query, params)
-    rows = c.fetchall()
-    
-    hours = list(range(24))
-    streams_map = {row['hour']: row['streams'] for row in rows}
-    minutes_map = {row['hour']: row['minutes'] for row in rows}
-    
-    data = []
-    for h in hours:
-        data.append({
-            "hour": h,
-            "streams": streams_map.get(h, 0),
-            "minutes": minutes_map.get(h, 0.0)
-        })
-        
-    conn.close()
-    return data
+        streams_map = {row['hour']: row['streams'] for row in rows}
+        minutes_map = {row['hour']: row['minutes'] for row in rows}
+        return [{"hour": h, "streams": streams_map.get(h, 0), "minutes": minutes_map.get(h, 0.0)} for h in range(24)]
+    finally:
+        conn.close()
 
 def get_trends(years: List[int] = None, month: int = None):
     conn = get_db_connection()
-    c = conn.cursor()
-    
-    where_clause, params = _build_where(years, month)
+    try:
+        c = conn.cursor()
+        where_clause, params = _build_where(years, month)
         
-    # Daily streams (PostgreSQL casts timestamp to DATE)
-    c.execute(f"SELECT CAST(timestamp AS DATE) as date, COUNT(*) as streams FROM listening_history {where_clause} GROUP BY CAST(timestamp AS DATE) ORDER BY CAST(timestamp AS DATE)", params)
-    # Convert datetime.date object to string for JSON serialization
-    daily = [{"date": r['date'].strftime('%Y-%m-%d'), "streams": r['streams']} for r in c.fetchall()]
-    
-    # Day of week streams
-    c.execute(f"SELECT day_name, COUNT(*) as streams FROM listening_history {where_clause} GROUP BY day_name", params)
-    dow_raw = c.fetchall()
-    day_order = {'Monday':0, 'Tuesday':1, 'Wednesday':2, 'Thursday':3, 'Friday':4, 'Saturday':5, 'Sunday':6}
-    dow = sorted([{"day": r['day_name'], "streams": r['streams']} for r in dow_raw], key=lambda x: day_order.get(x['day'], 0))
-    
-    # Monthly streams
-    where_no_month, params_no_month = _build_where(years, None)
-    c.execute(f"SELECT month, COUNT(*) as streams FROM listening_history {where_no_month} GROUP BY month ORDER BY month", params_no_month)
-    month_map = {1:'Jan', 2:'Feb', 3:'Mar', 4:'Apr', 5:'May', 6:'Jun', 7:'Jul', 8:'Aug', 9:'Sep', 10:'Oct', 11:'Nov', 12:'Dec'}
-    monthly = [{"month_id": r['month'], "month": month_map.get(r['month'], str(r['month'])), "streams": r['streams']} for r in c.fetchall()]
-    
-    conn.close()
-    return {"daily": daily, "dow": dow, "monthly": monthly}
+        c.execute(f"SELECT CAST(timestamp AS DATE) as date, COUNT(*) as streams FROM listening_history {where_clause} GROUP BY CAST(timestamp AS DATE) ORDER BY CAST(timestamp AS DATE)", params)
+        daily = [{"date": r['date'].strftime('%Y-%m-%d'), "streams": r['streams']} for r in c.fetchall()]
+        
+        c.execute(f"SELECT day_name, COUNT(*) as streams FROM listening_history {where_clause} GROUP BY day_name", params)
+        day_order = {'Monday':0,'Tuesday':1,'Wednesday':2,'Thursday':3,'Friday':4,'Saturday':5,'Sunday':6}
+        dow = sorted([{"day": r['day_name'], "streams": r['streams']} for r in c.fetchall()], key=lambda x: day_order.get(x['day'], 0))
+        
+        where_no_month, params_no_month = _build_where(years, None)
+        c.execute(f"SELECT month, COUNT(*) as streams FROM listening_history {where_no_month} GROUP BY month ORDER BY month", params_no_month)
+        month_map = {1:'Jan',2:'Feb',3:'Mar',4:'Apr',5:'May',6:'Jun',7:'Jul',8:'Aug',9:'Sep',10:'Oct',11:'Nov',12:'Dec'}
+        monthly = [{"month_id": r['month'], "month": month_map.get(r['month'], str(r['month'])), "streams": r['streams']} for r in c.fetchall()]
+        
+        return {"daily": daily, "dow": dow, "monthly": monthly}
+    finally:
+        conn.close()
 
 def get_hall_of_fame(top_n: int = 10, years: List[int] = None, month: int = None):
     conn = get_db_connection()
-    c = conn.cursor()
-    
-    where_clause, params = _build_where(years, month)
+    try:
+        c = conn.cursor()
+        where_clause, params = _build_where(years, month)
         
-    # Artists
-    c.execute(f"SELECT artist_name, SUM(duration_min) as minutes FROM listening_history {where_clause} GROUP BY artist_name ORDER BY minutes DESC LIMIT %s", params + (top_n,))
-    artists = [dict(r) for r in c.fetchall()]
-    
-    # Albums
-    c.execute(f"SELECT album_name, artist_name, SUM(duration_min) as minutes FROM listening_history {where_clause} GROUP BY album_name, artist_name ORDER BY minutes DESC LIMIT %s", params + (top_n,))
-    albums = [dict(r) for r in c.fetchall()]
-    
-    # Songs
-    c.execute(f"SELECT track_name, artist_name, SUM(duration_min) as minutes FROM listening_history {where_clause} GROUP BY track_name, artist_name ORDER BY minutes DESC LIMIT %s", params + (top_n,))
-    songs = [dict(r) for r in c.fetchall()]
-    
-    conn.close()
-    return {"artists": artists, "albums": albums, "songs": songs}
+        c.execute(f"SELECT artist_name, SUM(duration_min) as minutes FROM listening_history {where_clause} GROUP BY artist_name ORDER BY minutes DESC LIMIT %s", params + (top_n,))
+        artists = [dict(r) for r in c.fetchall()]
+        
+        c.execute(f"SELECT album_name, artist_name, SUM(duration_min) as minutes FROM listening_history {where_clause} GROUP BY album_name, artist_name ORDER BY minutes DESC LIMIT %s", params + (top_n,))
+        albums = [dict(r) for r in c.fetchall()]
+        
+        c.execute(f"SELECT track_name, artist_name, SUM(duration_min) as minutes FROM listening_history {where_clause} GROUP BY track_name, artist_name ORDER BY minutes DESC LIMIT %s", params + (top_n,))
+        songs = [dict(r) for r in c.fetchall()]
+        
+        return {"artists": artists, "albums": albums, "songs": songs}
+    finally:
+        conn.close()
 
 def get_available_years():
     conn = get_db_connection()
-    c = conn.cursor()
-    c.execute("SELECT DISTINCT year FROM listening_history ORDER BY year")
-    years = [r['year'] for r in c.fetchall() if r['year'] is not None]
-    conn.close()
-    return years
+    try:
+        c = conn.cursor()
+        c.execute("SELECT DISTINCT year FROM listening_history ORDER BY year")
+        return [r['year'] for r in c.fetchall() if r['year'] is not None]
+    finally:
+        conn.close()
 
 import spotipy
 import json
