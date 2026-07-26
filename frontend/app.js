@@ -86,16 +86,21 @@ async function updateDashboard() {
     document.getElementById('hof-albums').innerHTML = skeletonHTML;
     document.getElementById('hof-songs').innerHTML = skeletonHTML;
 
+    // Mark KPI as loading
+    const kpiIds = ['kpi-airtime','kpi-tracks','kpi-artists','kpi-avg-streams','kpi-avg-min'];
+    kpiIds.forEach(id => { const el = document.getElementById(id); el.innerText = '\u00a0'; el.classList.add('kpi-loading'); });
+
     fetch(`${API_BASE}/stats/kpi?years=${yearsParam}${monthQuery}`)
         .then(res => res.json())
         .then(data => {
-            document.getElementById('kpi-airtime').innerText = fmt.number(data.airtime_hours) + " hours";
-            document.getElementById('kpi-tracks').innerText = fmt.number(data.total_tracks);
-            document.getElementById('kpi-artists').innerText = fmt.number(data.total_artists);
-            document.getElementById('kpi-avg-streams').innerText = fmt.number(data.avg_streams_per_day);
-            document.getElementById('kpi-avg-min').innerText = fmt.number(data.avg_min_per_day);
+            const setKpi = (id, val) => { const el = document.getElementById(id); el.classList.remove('kpi-loading'); el.innerText = val; };
+            setKpi('kpi-airtime', fmt.number(data.airtime_hours) + ' hours');
+            setKpi('kpi-tracks', fmt.number(data.total_tracks));
+            setKpi('kpi-artists', fmt.number(data.total_artists));
+            setKpi('kpi-avg-streams', fmt.number(data.avg_streams_per_day));
+            setKpi('kpi-avg-min', fmt.number(data.avg_min_per_day));
         })
-        .catch(e => console.error(e));
+        .catch(e => { kpiIds.forEach(id => document.getElementById(id).classList.remove('kpi-loading')); console.error(e); });
 
     fetch(`${API_BASE}/stats/trends?years=${yearsParam}${monthQuery}`)
         .then(res => res.json())
@@ -116,10 +121,13 @@ async function updateDashboard() {
 // Renderers
 function renderTrends(data) {
     // Daily Area Chart
+    const doneOverlay = (id) => { const o = document.getElementById(id); if (o) o.classList.add('done'); };
+
     if (charts.daily) {
         charts.daily.data.labels = data.daily.map(d => d.date);
         charts.daily.data.datasets[0].data = data.daily.map(d => d.streams);
         charts.daily.update();
+        doneOverlay('overlay-daily');
     } else {
         const ctxDaily = document.getElementById('trend-daily').getContext('2d');
         charts.daily = new Chart(ctxDaily, {
@@ -144,6 +152,7 @@ function renderTrends(data) {
                 }
             }
         });
+        doneOverlay('overlay-daily');
     }
 
     // DOW Bar Chart
@@ -151,6 +160,7 @@ function renderTrends(data) {
         charts.dow.data.labels = data.dow.map(d => d.day);
         charts.dow.data.datasets[0].data = data.dow.map(d => d.streams);
         charts.dow.update();
+        doneOverlay('overlay-dow');
     } else {
         const ctxDow = document.getElementById('trend-dow').getContext('2d');
         charts.dow = new Chart(ctxDow, {
@@ -161,6 +171,7 @@ function renderTrends(data) {
             },
             options: { ...commonOptions, plugins: { legend: { display: false }, title: { display: true, text: 'Distribution by Day', color: '#fff', font: { size: 16 } } } }
         });
+        doneOverlay('overlay-dow');
     }
 
     // Monthly Bar Chart
@@ -181,6 +192,7 @@ function renderTrends(data) {
             }
         };
         charts.monthly.update();
+        doneOverlay('overlay-monthly');
     } else {
         const ctxMonthly = document.getElementById('trend-monthly').getContext('2d');
         charts.monthly = new Chart(ctxMonthly, {
@@ -202,6 +214,7 @@ function renderTrends(data) {
                 onHover: (e, elements) => { e.native.target.style.cursor = elements.length ? 'pointer' : 'default'; }
             }
         });
+        doneOverlay('overlay-monthly');
     }
 }
 
@@ -212,10 +225,13 @@ function renderClocks(data) {
         plugins: { legend: { display: false } }
     };
 
+    const doneClockOverlay = (id) => { const o = document.getElementById(id); if (o) o.classList.add('done'); };
+
     if (charts.clockStreams) {
         charts.clockStreams.data.labels = data.map(d => `Hour ${d.hour}:00`);
         charts.clockStreams.data.datasets[0].data = data.map(d => d.streams);
         charts.clockStreams.update();
+        doneClockOverlay('overlay-clock-streams');
     } else {
         const ctxStreams = document.getElementById('clock-streams').getContext('2d');
         charts.clockStreams = new Chart(ctxStreams, {
@@ -226,12 +242,14 @@ function renderClocks(data) {
             },
             options: { ...clockOptions, plugins: { legend: { display: false }, title: { display: true, text: 'Streams by Hour', color: '#fff', font: { size: 16 } } } }
         });
+        doneClockOverlay('overlay-clock-streams');
     }
 
     if (charts.clockMins) {
         charts.clockMins.data.labels = data.map(d => `Hour ${d.hour}:00`);
         charts.clockMins.data.datasets[0].data = data.map(d => d.minutes);
         charts.clockMins.update();
+        doneClockOverlay('overlay-clock-minutes');
     } else {
         const ctxMins = document.getElementById('clock-minutes').getContext('2d');
         charts.clockMins = new Chart(ctxMins, {
@@ -242,23 +260,29 @@ function renderClocks(data) {
             },
             options: { ...clockOptions, plugins: { legend: { display: false }, title: { display: true, text: 'Minutes Streamed by Hour', color: '#fff', font: { size: 16 } } } }
         });
+        doneClockOverlay('overlay-clock-minutes');
     }
 }
 
 function getCardHTML(idx, type, title, subtitle, value, img, artistName=null) {
     const delay = Math.min(idx * 0.02, 1.0);
     const isArtist = type === 'artist';
-    const imgClass = isArtist ? "hof-img artist-img" : "hof-img";
     const subHTML = subtitle ? `<p class="list-subtitle">${subtitle}</p>` : "";
     const safeTitle = title.replace(/"/g, '&quot;');
     const safeArtist = artistName ? artistName.replace(/"/g, '&quot;') : '';
+    // If we already have an image (from cache), mark it loaded immediately; otherwise shimmer shows
+    const imgSrc = img || '';
+    const loadedClass = imgSrc ? 'loaded' : '';
     return `
         <div class="list-card" style="animation-delay: ${delay}s;">
             <div class="list-rank">#${idx+1}</div>
-            <img src="${img || 'https://cdn-icons-png.flaticon.com/512/33/33714.png'}"
-                 class="${imgClass}"
-                 data-name="${safeTitle}" data-type="${type}" data-artist="${safeArtist}"
-                 loading="lazy">
+            <div class="img-loader ${isArtist ? 'artist' : ''}">
+                <img src="${imgSrc}"
+                     class="${loadedClass}"
+                     data-name="${safeTitle}" data-type="${type}" data-artist="${safeArtist}"
+                     onload="this.classList.add('loaded')"
+                     onerror="this.src='https://cdn-icons-png.flaticon.com/512/33/33714.png';this.classList.add('loaded')">
+            </div>
             <div class="list-details">
                 <p class="list-title">${title}</p>
                 ${subHTML}

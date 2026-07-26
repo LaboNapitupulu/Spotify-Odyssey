@@ -58,23 +58,23 @@
         <section class="kpi-grid">
             <div class="kpi-card">
                 <div class="kpi-label">Airtime</div>
-                <div class="kpi-value" id="kpi-airtime">-</div>
+                <div class="kpi-value kpi-loading" id="kpi-airtime">&nbsp;</div>
             </div>
             <div class="kpi-card">
                 <div class="kpi-label">Total Tracks</div>
-                <div class="kpi-value" id="kpi-tracks">-</div>
+                <div class="kpi-value kpi-loading" id="kpi-tracks">&nbsp;</div>
             </div>
             <div class="kpi-card">
                 <div class="kpi-label">Total Artists</div>
-                <div class="kpi-value" id="kpi-artists">-</div>
+                <div class="kpi-value kpi-loading" id="kpi-artists">&nbsp;</div>
             </div>
             <div class="kpi-card">
                 <div class="kpi-label">Avg Streams/Day</div>
-                <div class="kpi-value" id="kpi-avg-streams">-</div>
+                <div class="kpi-value kpi-loading" id="kpi-avg-streams">&nbsp;</div>
             </div>
             <div class="kpi-card">
                 <div class="kpi-label">Avg Minutes/Day</div>
-                <div class="kpi-value" id="kpi-avg-min">-</div>
+                <div class="kpi-value kpi-loading" id="kpi-avg-min">&nbsp;</div>
             </div>
         </section>
 
@@ -82,9 +82,11 @@
         <div class="section-header">⏱️ Listening Clocks</div>
         <section class="charts-grid-2">
             <div class="chart-container">
+                <div class="chart-overlay" id="overlay-clock-streams"><div class="chart-spin"></div></div>
                 <canvas id="clock-streams"></canvas>
             </div>
             <div class="chart-container">
+                <div class="chart-overlay" id="overlay-clock-minutes"><div class="chart-spin"></div></div>
                 <canvas id="clock-minutes"></canvas>
             </div>
         </section>
@@ -93,14 +95,17 @@
         <div class="section-header">📈 Time Analytics</div>
         <section class="chart-full">
             <div class="chart-container">
+                <div class="chart-overlay" id="overlay-daily"><div class="chart-spin"></div></div>
                 <canvas id="trend-daily"></canvas>
             </div>
         </section>
         <section class="charts-grid-2">
             <div class="chart-container">
+                <div class="chart-overlay" id="overlay-dow"><div class="chart-spin"></div></div>
                 <canvas id="trend-dow"></canvas>
             </div>
             <div class="chart-container">
+                <div class="chart-overlay" id="overlay-monthly"><div class="chart-spin"></div></div>
                 <canvas id="trend-monthly"></canvas>
             </div>
         </section>
@@ -136,7 +141,7 @@
                         </tr>
                     </thead>
                     <tbody id="recent-tbody">
-                        <tr><td colspan="4" style="text-align:center; color:#475569; padding: 30px;">📡 Loading last 10 played tracks...</td></tr>
+                        <tr><td colspan="4" style="text-align:center; color:#475569; padding: 30px;">📡 Loading recently played tracks...</td></tr>
                     </tbody>
                 </table>
             </div>
