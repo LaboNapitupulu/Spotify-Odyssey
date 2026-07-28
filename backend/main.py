@@ -1,260 +1,450 @@
-from fastapi import FastAPI, Request, Query
-from fastapi.staticfiles import StaticFiles
-from fastapi.middleware.cors import CORSMiddleware
-from typing import List, Optional
-import spotipy
-from spotipy.oauth2 import SpotifyOAuth
-import toml
+import hmac
+import logging
 import os
 import re
-from fastapi.responses import JSONResponse
-import pandas as pd
+from contextlib import asynccontextmanager
 from datetime import datetime
+from typing import Annotated, Literal, Optional
+
+import pandas as pd
+import spotipy
+import toml
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
+from spotipy.oauth2 import SpotifyClientCredentials, SpotifyOAuth
 
 from backend import database
 
-app = FastAPI(title="ProjectSpotify Backend")
 
-# Setup CORS if needed
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+logger = logging.getLogger("spotify_odyssey")
+logging.basicConfig(
+    level=os.environ.get("LOG_LEVEL", "INFO"),
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
 
-# 1. SPOTIFY API CONFIG
-def get_spotify_client():
-    secrets_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".streamlit", "secrets.toml")
+ROOT_DIR = os.path.dirname(os.path.dirname(__file__))
+FRONTEND_DIR = os.path.join(ROOT_DIR, "frontend")
+LIVE_SPOTIFY_ENABLED = os.environ.get("ENABLE_LIVE_SPOTIFY", "false").lower() in {
+    "1",
+    "true",
+    "yes",
+}
+
+
+def _load_spotify_credentials() -> tuple[Optional[str], Optional[str], str]:
+    secrets_path = os.path.join(ROOT_DIR, ".streamlit", "secrets.toml")
     try:
         secrets = toml.load(secrets_path)
-        client_id = secrets["spotify"]["client_id"]
-        client_secret = secrets["spotify"]["client_secret"]
-        redirect_uri = secrets["spotify"]["redirect_uri"]
-    except Exception:
-        # Fallback for testing if secrets.toml isn't there
-        client_id = os.getenv("SPOTIFY_CLIENT_ID")
-        client_secret = os.getenv("SPOTIFY_CLIENT_SECRET")
-        redirect_uri = os.getenv("SPOTIFY_REDIRECT_URI", "http://127.0.0.1:8080/")
+        spotify_secrets = secrets["spotify"]
+        return (
+            spotify_secrets["client_id"],
+            spotify_secrets["client_secret"],
+            spotify_secrets["redirect_uri"],
+        )
+    except (FileNotFoundError, KeyError, TypeError, toml.TomlDecodeError):
+        return (
+            os.environ.get("SPOTIFY_CLIENT_ID"),
+            os.environ.get("SPOTIFY_CLIENT_SECRET"),
+            os.environ.get(
+                "SPOTIFY_REDIRECT_URI",
+                "http://127.0.0.1:8080/",
+            ),
+        )
 
-    auth_manager = SpotifyOAuth(
-        client_id=client_id, 
-        client_secret=client_secret, 
-        redirect_uri=redirect_uri, 
-        scope='user-read-recently-played user-read-currently-playing user-read-playback-state',
-        cache_handler=database.PostgresCacheHandler()
-    )
-    return spotipy.Spotify(auth_manager=auth_manager)
-
-from spotipy.oauth2 import SpotifyOAuth, SpotifyClientCredentials
 
 class NonBlockingSpotifyOAuth(SpotifyOAuth):
     def _get_auth_response_interactive(self, open_browser=False):
-        raise Exception("Token expired or missing scopes. Please run 'python auth_spotify.py' in the terminal.")
+        raise RuntimeError(
+            "Spotify authorization is missing. Run auth_spotify.py locally."
+        )
 
-# We will initialize this lazily or handle errors if tokens are missing
-sp = None
-sp_public = None
-try:
-    secrets_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".streamlit", "secrets.toml")
-    if os.path.exists(secrets_path):
-        secrets = toml.load(secrets_path)
-        client_id = secrets["spotify"]["client_id"]
-        client_secret = secrets["spotify"]["client_secret"]
-        redirect_uri = secrets["spotify"]["redirect_uri"]
-    else:
-        client_id = os.environ.get("SPOTIFY_CLIENT_ID")
-        client_secret = os.environ.get("SPOTIFY_CLIENT_SECRET")
-        redirect_uri = os.environ.get("SPOTIFY_REDIRECT_URI", "http://127.0.0.1:8080")
-        
-    auth_manager = NonBlockingSpotifyOAuth(
-        client_id=client_id, 
-        client_secret=client_secret, 
-        redirect_uri=redirect_uri, 
-        scope='user-read-recently-played user-read-currently-playing user-read-playback-state',
-        cache_handler=database.PostgresCacheHandler(),
-        open_browser=False
-    )
-    sp = spotipy.Spotify(auth_manager=auth_manager, retries=0, requests_timeout=10)
-    
-    # Public client for artwork fetching (no user auth required)
-    public_auth = SpotifyClientCredentials(client_id=client_id, client_secret=client_secret)
-    sp_public = spotipy.Spotify(auth_manager=public_auth, retries=0, requests_timeout=10)
-except Exception as e:
-    print(f"Warning: Could not initialize Spotify client: {e}")
 
-def clean_query(text):
-    text = str(text)
-    text = re.sub(r'\(.*?\)', '', text) 
-    text = text.split('feat')[0].split('ft.')[0].strip() 
-    return " ".join(text.split())
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    app.state.database_ready = False
+    app.state.spotify_user = None
+    app.state.spotify_public = None
 
-# In-memory cache for artwork replaced with persistent SQLite cache
-def get_artwork(name, search_type='artist', artist_name=None):
-    cache_key = f"{search_type}_{name}_{artist_name}"
-    cached_url = database.get_cached_artwork(cache_key)
-    if cached_url is not None:
-        return cached_url
-        
-    if not sp_public:
-        return ""
-        
     try:
-        name_clean = clean_query(name)
-        if search_type == 'artist':
-            q_str = name_clean
-        elif search_type == 'album' and artist_name:
-            q_str = f'album:"{name_clean}" artist:"{clean_query(artist_name)}"'
-        else:
-            q_str = f'track:"{name_clean}" artist:"{clean_query(artist_name)}"'
-            
-        results = sp_public.search(q=q_str, type=search_type, limit=5)
-        items = results[search_type + 's']['items']
-        if items:
-            # Try to find exact match first to avoid Spotify returning trending related artists
-            best_item = items[0]
-            for item in items:
-                if item['name'].lower() == name_clean.lower():
-                    best_item = item
-                    break
-                    
-            images = best_item.get('images', [])
-            url = images[0]['url'] if images else ""
-            if not url and search_type == 'track' and 'album' in best_item:
-                images = best_item['album'].get('images', [])
-                url = images[0]['url'] if images else ""
-                
-            if url:
-                database.set_cached_artwork(cache_key, url)
-            return url
-        else:
-            database.set_cached_artwork(cache_key, "")
-            return ""
-    except Exception as e:
-        print(f"Error fetching artwork for {name}: {e}")
-        
-    return ""
+        database.init_db()
+        app.state.database_ready = True
+    except Exception:
+        logger.exception("Database initialization failed.")
 
-# 2. STATS ENDPOINTS
-@app.get("/api/stats/years")
+    client_id, client_secret, redirect_uri = _load_spotify_credentials()
+    if client_id and client_secret:
+        try:
+            public_auth = SpotifyClientCredentials(
+                client_id=client_id,
+                client_secret=client_secret,
+            )
+            app.state.spotify_public = spotipy.Spotify(
+                auth_manager=public_auth,
+                retries=1,
+                requests_timeout=10,
+            )
+        except Exception:
+            logger.exception("Spotify public client initialization failed.")
+
+        if LIVE_SPOTIFY_ENABLED and app.state.database_ready:
+            try:
+                auth_manager = NonBlockingSpotifyOAuth(
+                    client_id=client_id,
+                    client_secret=client_secret,
+                    redirect_uri=redirect_uri,
+                    scope=(
+                        "user-read-recently-played "
+                        "user-read-currently-playing "
+                        "user-read-playback-state"
+                    ),
+                    cache_handler=database.PostgresCacheHandler(),
+                    open_browser=False,
+                )
+                app.state.spotify_user = spotipy.Spotify(
+                    auth_manager=auth_manager,
+                    retries=1,
+                    requests_timeout=10,
+                )
+            except Exception:
+                logger.exception("Spotify private client initialization failed.")
+    else:
+        logger.warning("Spotify credentials are not configured.")
+
+    yield
+    database.close_pool()
+
+
+app = FastAPI(
+    title="Spotify Odyssey API",
+    description="Personal listening analytics with privacy-safe portfolio defaults.",
+    version="2.0.0",
+    lifespan=lifespan,
+)
+
+configured_origins = [
+    origin.strip()
+    for origin in os.environ.get(
+        "CORS_ORIGINS",
+        "http://127.0.0.1:8000,http://localhost:8000",
+    ).split(",")
+    if origin.strip()
+]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=configured_origins,
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Accept", "Content-Type", "X-API-Key"],
+)
+
+
+def parse_years(years: Optional[str]) -> Optional[list[int]]:
+    if not years:
+        return None
+    if len(years) > 240:
+        raise HTTPException(status_code=422, detail="Year filter is too long.")
+
+    parts = [part.strip() for part in years.split(",") if part.strip()]
+    if not parts or len(parts) > 40:
+        raise HTTPException(status_code=422, detail="Select between 1 and 40 years.")
+    if any(not re.fullmatch(r"\d{4}", part) for part in parts):
+        raise HTTPException(status_code=422, detail="Years must use YYYY format.")
+
+    parsed = sorted({int(part) for part in parts})
+    if any(year < 1900 or year > 2100 for year in parsed):
+        raise HTTPException(status_code=422, detail="Year is outside the supported range.")
+    return parsed
+
+
+def require_database(request: Request) -> None:
+    if not request.app.state.database_ready:
+        raise HTTPException(status_code=503, detail="Analytics database is unavailable.")
+
+
+def require_private_spotify(
+    request: Request,
+    x_api_key: Annotated[Optional[str], Header()] = None,
+) -> None:
+    if not LIVE_SPOTIFY_ENABLED:
+        raise HTTPException(status_code=404, detail="Live Spotify features are disabled.")
+
+    expected_key = os.environ.get("PRIVATE_API_KEY")
+    client_host = request.client.host if request.client else ""
+    is_loopback = client_host in {"127.0.0.1", "::1", "localhost"}
+
+    if expected_key:
+        if not x_api_key or not hmac.compare_digest(x_api_key, expected_key):
+            raise HTTPException(status_code=401, detail="Invalid private API key.")
+    elif not is_loopback:
+        raise HTTPException(
+            status_code=503,
+            detail="PRIVATE_API_KEY is required outside localhost.",
+        )
+
+
+@app.get("/api/health")
+def health(request: Request):
+    return {
+        "status": "ready" if request.app.state.database_ready else "degraded",
+        "database_ready": request.app.state.database_ready,
+        "live_spotify_enabled": LIVE_SPOTIFY_ENABLED,
+        "spotify_public_ready": request.app.state.spotify_public is not None,
+    }
+
+
+@app.get("/api/stats/years", dependencies=[Depends(require_database)])
 def api_get_years():
     return database.get_available_years()
 
-@app.get("/api/stats/kpi")
-def api_get_kpi(years: str = None, month: int = None):
-    year_list = [int(y) for y in years.split(',')] if years else None
-    return database.get_kpi_stats(year_list, month)
 
-@app.get("/api/stats/clock")
-def api_get_clock(years: str = None, month: int = None):
-    year_list = [int(y) for y in years.split(',')] if years else None
-    return database.get_hourly_clock(year_list, month)
+@app.get("/api/stats/kpi", dependencies=[Depends(require_database)])
+def api_get_kpi(
+    years: Annotated[Optional[str], Query(max_length=240)] = None,
+    month: Annotated[Optional[int], Query(ge=1, le=12)] = None,
+):
+    return database.get_kpi_stats(parse_years(years), month)
 
-@app.get("/api/stats/trends")
-def api_get_trends(years: str = None, month: int = None):
-    year_list = [int(y) for y in years.split(',')] if years else None
-    return database.get_trends(year_list, month)
 
-@app.get("/api/stats/fame")
-def api_get_fame(years: str = None, top_n: int = 10, month: int = None):
-    year_list = [int(y) for y in years.split(',')] if years else None
-    data = database.get_hall_of_fame(top_n, year_list, month)
-    
-    # We will NOT fetch artwork here to avoid blocking the UI.
-    # The frontend will lazy-load the artwork using the /api/spotify/artwork endpoint.
-    for artist in data['artists']: artist['image_url'] = ''
-    for album in data['albums']: album['image_url'] = ''
-    for song in data['songs']: song['image_url'] = ''
-        
+@app.get("/api/stats/clock", dependencies=[Depends(require_database)])
+def api_get_clock(
+    years: Annotated[Optional[str], Query(max_length=240)] = None,
+    month: Annotated[Optional[int], Query(ge=1, le=12)] = None,
+):
+    return database.get_hourly_clock(parse_years(years), month)
+
+
+@app.get("/api/stats/trends", dependencies=[Depends(require_database)])
+def api_get_trends(
+    years: Annotated[Optional[str], Query(max_length=240)] = None,
+    month: Annotated[Optional[int], Query(ge=1, le=12)] = None,
+):
+    return database.get_trends(parse_years(years), month)
+
+
+@app.get("/api/stats/fame", dependencies=[Depends(require_database)])
+def api_get_fame(
+    years: Annotated[Optional[str], Query(max_length=240)] = None,
+    top_n: Annotated[int, Query(ge=1, le=50)] = 10,
+    month: Annotated[Optional[int], Query(ge=1, le=12)] = None,
+):
+    data = database.get_hall_of_fame(top_n, parse_years(years), month)
+    for category in ("artists", "albums", "songs"):
+        for item in data[category]:
+            item["image_url"] = ""
     return data
 
-@app.get("/api/spotify/artwork")
-def api_get_artwork(name: str, type: str = 'artist', artist_name: str = None):
-    # This allows the frontend to fetch images concurrently without blocking the main dashboard
-    url = get_artwork(name, type, artist_name)
-    return {"image_url": url}
 
-# 3. LIVE SPOTIFY ENDPOINTS (Proxy)
-@app.get("/api/spotify/now-playing")
-def api_now_playing():
-    if not sp: return JSONResponse({"error": "Spotify client not initialized"}, status_code=500)
-    try:
-        curr = sp.current_user_playing_track()
-        if curr and curr.get('is_playing'):
-            return {
-                "is_playing": True,
-                "track_id": curr['item']['id'],
-                "track_name": curr['item']['name'],
-                "artist_name": curr['item']['artists'][0]['name'],
-                "image_url": curr['item']['album']['images'][0]['url'] if curr['item']['album']['images'] else ""
-            }
-        return {"is_playing": False}
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+def clean_query(text: str) -> str:
+    cleaned = re.sub(r"\(.*?\)", "", str(text))
+    cleaned = cleaned.split("feat")[0].split("ft.")[0].strip()
+    return " ".join(cleaned.split())
 
-@app.get("/api/spotify/recently-played")
-def api_recently_played(limit: int = 50):
-    if not sp: return JSONResponse({"error": "Spotify client not initialized"}, status_code=500)
+
+def get_artwork(
+    request: Request,
+    name: str,
+    search_type: Literal["artist", "album", "track"],
+    artist_name: Optional[str] = None,
+) -> str:
+    cache_key = f"{search_type}_{name}_{artist_name or ''}"
+    cached_url = database.get_cached_artwork(cache_key)
+    if cached_url is not None:
+        return cached_url
+
+    spotify_public = request.app.state.spotify_public
+    if spotify_public is None:
+        return ""
+
+    name_clean = clean_query(name)
+    if search_type == "artist":
+        query = name_clean
+    elif search_type == "album" and artist_name:
+        query = f'album:"{name_clean}" artist:"{clean_query(artist_name)}"'
+    else:
+        query = f'track:"{name_clean}" artist:"{clean_query(artist_name or "")}"'
+
     try:
-        res = sp.current_user_recently_played(limit=limit)
+        results = spotify_public.search(q=query, type=search_type, limit=5)
+        items = results.get(f"{search_type}s", {}).get("items", [])
+        if not items:
+            database.set_cached_artwork(cache_key, "")
+            return ""
+
+        best_item = next(
+            (
+                item
+                for item in items
+                if item.get("name", "").casefold() == name_clean.casefold()
+            ),
+            items[0],
+        )
+        images = best_item.get("images", [])
+        if not images and search_type == "track":
+            images = best_item.get("album", {}).get("images", [])
+        image_url = images[0].get("url", "") if images else ""
+        database.set_cached_artwork(cache_key, image_url)
+        return image_url
+    except Exception:
+        logger.exception("Artwork lookup failed for type=%s.", search_type)
+        return ""
+
+
+@app.get("/api/spotify/artwork", dependencies=[Depends(require_database)])
+def api_get_artwork(
+    request: Request,
+    name: Annotated[str, Query(min_length=1, max_length=200)],
+    type: Annotated[Literal["artist", "album", "track"], Query()] = "artist",
+    artist_name: Annotated[Optional[str], Query(max_length=200)] = None,
+):
+    return {"image_url": get_artwork(request, name, type, artist_name)}
+
+
+@app.get(
+    "/api/spotify/now-playing",
+    dependencies=[Depends(require_private_spotify)],
+)
+def api_now_playing(request: Request):
+    spotify_user = request.app.state.spotify_user
+    if spotify_user is None:
+        raise HTTPException(status_code=503, detail="Spotify user client is unavailable.")
+    try:
+        current = spotify_user.current_user_playing_track()
+        if not current or not current.get("is_playing") or not current.get("item"):
+            return {"is_playing": False}
+        track = current["item"]
+        images = track.get("album", {}).get("images", [])
+        artists = track.get("artists", [])
+        return {
+            "is_playing": True,
+            "track_id": track.get("id"),
+            "track_name": track.get("name", "Unknown track"),
+            "artist_name": artists[0].get("name", "Unknown artist") if artists else "",
+            "image_url": images[0].get("url", "") if images else "",
+        }
+    except Exception:
+        logger.exception("Now-playing request failed.")
+        return JSONResponse(
+            {"error": "Spotify is temporarily unavailable."},
+            status_code=502,
+        )
+
+
+@app.get(
+    "/api/spotify/recently-played",
+    dependencies=[Depends(require_private_spotify)],
+)
+def api_recently_played(
+    request: Request,
+    limit: Annotated[int, Query(ge=1, le=50)] = 10,
+):
+    spotify_user = request.app.state.spotify_user
+    if spotify_user is None:
+        raise HTTPException(status_code=503, detail="Spotify user client is unavailable.")
+    try:
+        response = spotify_user.current_user_recently_played(limit=limit)
         items = []
-        for item in res.get('items', []):
-            track = item['track']
-            items.append({
-                "played_at": item['played_at'],
-                "track_name": track['name'],
-                "artist_name": track['artists'][0]['name'],
-                "image_url": track['album']['images'][2]['url'] if len(track['album']['images']) > 2 else (track['album']['images'][0]['url'] if track['album']['images'] else "")
-            })
+        for entry in response.get("items", []):
+            track = entry.get("track", {})
+            artists = track.get("artists", [])
+            images = track.get("album", {}).get("images", [])
+            preferred_image = images[2] if len(images) > 2 else (images[0] if images else {})
+            items.append(
+                {
+                    "played_at": entry.get("played_at"),
+                    "track_name": track.get("name", "Unknown track"),
+                    "artist_name": artists[0].get("name", "Unknown artist")
+                    if artists
+                    else "",
+                    "image_url": preferred_image.get("url", ""),
+                }
+            )
         return {"items": items}
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+    except Exception:
+        logger.exception("Recently-played request failed.")
+        return JSONResponse(
+            {"error": "Spotify is temporarily unavailable."},
+            status_code=502,
+        )
 
-@app.get("/api/sync")
-def api_sync_spotify():
-    if not sp: return JSONResponse({"error": "Spotify client not initialized"}, status_code=500)
+
+@app.post(
+    "/api/sync",
+    dependencies=[Depends(require_private_spotify), Depends(require_database)],
+)
+def api_sync_spotify(request: Request):
+    spotify_user = request.app.state.spotify_user
+    if spotify_user is None:
+        raise HTTPException(status_code=503, detail="Spotify user client is unavailable.")
+
     try:
-        conn = database.get_db_connection()
-        c = conn.cursor()
-        
-        c.execute("SELECT MAX(timestamp) FROM listening_history")
-        last_timestamp_str = c.fetchone()[0]
-        if last_timestamp_str:
-            last_timestamp = pd.to_datetime(last_timestamp_str).tz_localize(None)
-        else:
-            last_timestamp = datetime(1970, 1, 1)
-            
-        results = sp.current_user_recently_played(limit=50)
-        new_data_list = []
-        for item in results['items']:
-            played_at = pd.to_datetime(item['played_at']).tz_convert('Asia/Jakarta').tz_localize(None)
-            if played_at > last_timestamp:
-                track = item['track']
-                new_data_list.append((
-                    played_at.strftime('%Y-%m-%d %H:%M:%S'),
-                    track['duration_ms'], track['name'], track['artists'][0]['name'], track['album']['name'],
-                    'API_Auto_Update', 'API_Auto_Update', False,
-                    played_at.year, played_at.month, played_at.day_name(), played_at.hour,
-                    track['duration_ms'] / 60000.0
-                ))
-                
-        if new_data_list:
-            new_data_list.reverse()
-            c.executemany('''
-                INSERT INTO listening_history 
-                (timestamp, duration_ms, track_name, artist_name, album_name, reason_start, reason_end, skipped, year, month, day_name, hour, duration_min)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ''', new_data_list)
-            conn.commit()
-            
-        conn.close()
-        return {"status": "success", "inserted": len(new_data_list)}
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+        with database.get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT MAX(timestamp) FROM listening_history")
+            latest = cursor.fetchone()[0]
+            latest_timestamp = (
+                pd.to_datetime(latest).tz_localize(None)
+                if latest
+                else datetime(1970, 1, 1)
+            )
 
-# 4. STATIC FILES (Frontend)
-frontend_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "frontend")
-# Only mount if directory exists (to prevent errors during setup)
-if os.path.exists(frontend_path):
-    app.mount("/", StaticFiles(directory=frontend_path, html=True), name="frontend")
+            response = spotify_user.current_user_recently_played(limit=50)
+            rows = []
+            for entry in response.get("items", []):
+                played_at = (
+                    pd.to_datetime(entry["played_at"])
+                    .tz_convert("Asia/Jakarta")
+                    .tz_localize(None)
+                )
+                if played_at <= latest_timestamp:
+                    continue
+                track = entry["track"]
+                rows.append(
+                    (
+                        played_at,
+                        track["duration_ms"],
+                        track["name"],
+                        track["artists"][0]["name"],
+                        track["album"]["name"],
+                        "API_Auto_Update",
+                        "API_Auto_Update",
+                        False,
+                        played_at.year,
+                        played_at.month,
+                        played_at.day_name(),
+                        played_at.hour,
+                        track["duration_ms"] / 60000.0,
+                    )
+                )
+
+            inserted = 0
+            if rows:
+                cursor.executemany(
+                    """
+                    INSERT INTO listening_history
+                    (
+                        timestamp, duration_ms, track_name, artist_name,
+                        album_name, reason_start, reason_end, skipped,
+                        year, month, day_name, hour, duration_min
+                    )
+                    VALUES (
+                        %s, %s, %s, %s, %s, %s, %s,
+                        %s, %s, %s, %s, %s, %s
+                    )
+                    ON CONFLICT (timestamp, track_name, artist_name) DO NOTHING
+                    """,
+                    list(reversed(rows)),
+                )
+                inserted = max(0, cursor.rowcount)
+        return {"status": "success", "inserted": inserted}
+    except Exception:
+        logger.exception("Spotify synchronization failed.")
+        return JSONResponse(
+            {"error": "Spotify synchronization failed."},
+            status_code=502,
+        )
+
+
+if os.path.isdir(FRONTEND_DIR):
+    app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")

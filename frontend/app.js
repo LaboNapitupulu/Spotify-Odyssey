@@ -1,487 +1,875 @@
-// Global State & Config
-const API_BASE = "/api";
+const CONFIG = window.SPOTIFY_ODYSSEY_CONFIG || {
+    apiBase: "/api",
+    demoFallback: true,
+    liveEnabled: false,
+};
+const API_BASE = CONFIG.apiBase;
+const PLACEHOLDER_ART = "assets/music-placeholder.svg";
+
 let selectedYears = [];
 let allAvailableYears = [];
 let topN = 10;
 let selectedMonth = null;
 let charts = {};
 let isMobileMenuOpen = false;
+let isDemoMode = false;
+let demoData = null;
+let dashboardController = null;
+let dashboardRequestId = 0;
+let currentTrackId = null;
+let lastPlayedAt = null;
 
-// Theme config for Chart.js
-Chart.defaults.color = '#94a3b8';
+Chart.defaults.color = "#98a2b3";
 Chart.defaults.font.family = "'Inter', sans-serif";
 
 const commonOptions = {
     responsive: true,
     maintainAspectRatio: false,
+    animation: { duration: 350 },
     plugins: { legend: { display: false } },
     scales: {
-        x: { grid: { display: false }, border: { display: false } },
-        y: { grid: { color: '#1e293b' }, border: { display: false } }
-    }
+        x: {
+            grid: { display: false },
+            border: { display: false },
+            ticks: { maxRotation: 0 },
+        },
+        y: {
+            beginAtZero: true,
+            grid: { color: "rgba(148, 163, 184, 0.1)" },
+            border: { display: false },
+        },
+    },
 };
 
-// Formatting utilities
 const fmt = {
-    number: (num) => new Intl.NumberFormat('en-US').format(Math.round(num) || 0),
-    time: (dateStr) => {
-        const d = new Date(dateStr);
-        return d.toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
-               .replace(/\./g, ':').replace(',', ' |');
-    }
+    number: (value) =>
+        new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(
+            Number(value) || 0,
+        ),
+    time: (dateString) => {
+        const date = new Date(dateString);
+        if (Number.isNaN(date.getTime())) return "Unknown time";
+        return date.toLocaleString("en-GB", {
+            day: "2-digit",
+            month: "short",
+            hour: "2-digit",
+            minute: "2-digit",
+        });
+    },
 };
 
-// Initialize Dashboard
-async function init() {
-    await fetchYears();
-    setupEventListeners();
-    await updateDashboard();
-    
-    // Start live pulse
-    fetchNowPlaying();
-    fetchRecentlyPlayed();
-    setInterval(fetchNowPlaying, 30000);    // 30s — now playing check
-    setInterval(fetchRecentlyPlayed, 60000); // 60s — recent played (safe from rate limit)
+function escapeHTML(value) {
+    return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
 }
 
-// Data Fetchers
+function safeImageURL(value) {
+    if (!value) return PLACEHOLDER_ART;
+    try {
+        const url = new URL(value, window.location.href);
+        if (url.protocol === "https:" || url.origin === window.location.origin) {
+            return url.href;
+        }
+    } catch {
+        return PLACEHOLDER_ART;
+    }
+    return PLACEHOLDER_ART;
+}
+
+async function requestJSON(url, options = {}) {
+    const response = await fetch(url, {
+        ...options,
+        headers: { Accept: "application/json", ...(options.headers || {}) },
+    });
+    const contentType = response.headers.get("content-type") || "";
+    if (!response.ok) {
+        throw new Error(`Request failed with status ${response.status}.`);
+    }
+    if (!contentType.includes("application/json")) {
+        throw new Error("The server returned a non-JSON response.");
+    }
+    return response.json();
+}
+
+async function loadDemoData() {
+    if (demoData) return demoData;
+    demoData = await requestJSON("demo-data.json", { cache: "no-store" });
+    return demoData;
+}
+
+function setConnectionState(mode) {
+    const status = document.getElementById("connection-status");
+    status.className = `status-badge ${mode}`;
+    const labels = {
+        live: "Live analytics connected",
+        demo: "Portfolio demo data",
+        checking: "Checking data source",
+        error: "Data source unavailable",
+    };
+    status.textContent = labels[mode] || labels.error;
+}
+
+function setDemoMode(enabled) {
+    isDemoMode = enabled;
+    document.getElementById("mode-banner").classList.toggle("hidden", !enabled);
+    setConnectionState(enabled ? "demo" : "live");
+}
+
+function showError(message) {
+    document.getElementById("app-error-message").textContent = message;
+    document.getElementById("app-error").classList.remove("hidden");
+    setConnectionState("error");
+}
+
+function clearError() {
+    document.getElementById("app-error").classList.add("hidden");
+}
+
+function showToast(message) {
+    const container = document.getElementById("toast-container");
+    const toast = document.createElement("div");
+    toast.className = "custom-toast";
+    toast.textContent = message;
+    container.appendChild(toast);
+    window.setTimeout(() => toast.remove(), 3500);
+}
+
+async function init() {
+    setupEventListeners();
+    setConnectionState("checking");
+
+    try {
+        await fetchYears();
+        await updateDashboard();
+    } catch (error) {
+        showError(error.message || "The dashboard could not be initialized.");
+    }
+
+    if (CONFIG.liveEnabled && !isDemoMode) {
+        await fetchNowPlaying();
+        await fetchRecentlyPlayed();
+        window.setInterval(fetchNowPlaying, 30000);
+        window.setInterval(fetchRecentlyPlayed, 60000);
+    } else {
+        renderLiveUnavailable();
+    }
+}
+
 async function fetchYears() {
     try {
-        const res = await fetch(`${API_BASE}/stats/years`);
-        const years = await res.json();
-        const container = document.getElementById('year-filters');
-        
+        const years = await requestJSON(`${API_BASE}/stats/years`);
+        if (!Array.isArray(years) || !years.length) {
+            throw new Error("No listening years were returned.");
+        }
         allAvailableYears = years;
-        selectedYears = [...years];
-        
-        let html = `<div class="filter-chip-container">
-            <div class="filter-chip active" data-value="all">All Years</div>`;
-        years.forEach(y => { html += `<div class="filter-chip" data-value="${y}">${y}</div>`; });
-        html += `</div>`;
-        container.innerHTML = html;
-    } catch(e) { console.error("Failed to fetch years", e); }
+        setDemoMode(false);
+    } catch (error) {
+        if (!CONFIG.demoFallback) throw error;
+        const sample = await loadDemoData();
+        allAvailableYears = sample.years;
+        setDemoMode(true);
+    }
+
+    selectedYears = [...allAvailableYears];
+    renderYearFilters();
 }
 
-// Toast Notification System
-function showToast(message) {
-    let container = document.getElementById('toast-container');
-    if (!container) {
-        container = document.createElement('div');
-        container.id = 'toast-container';
-        document.body.appendChild(container);
-    }
-    const toast = document.createElement('div');
-    toast.className = 'custom-toast';
-    toast.innerText = message;
-    container.appendChild(toast);
-    setTimeout(() => { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 3500);
+function renderYearFilters() {
+    const container = document.getElementById("year-filters");
+    container.replaceChildren();
+
+    const group = document.createElement("div");
+    group.className = "filter-chip-container";
+    group.setAttribute("role", "group");
+    group.setAttribute("aria-label", "Listening years");
+
+    const allButton = document.createElement("button");
+    allButton.type = "button";
+    allButton.className = "filter-chip active";
+    allButton.dataset.value = "all";
+    allButton.textContent = "All years";
+    allButton.setAttribute("aria-pressed", "true");
+    group.appendChild(allButton);
+
+    allAvailableYears.forEach((year) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "filter-chip";
+        button.dataset.value = String(year);
+        button.textContent = String(year);
+        button.setAttribute("aria-pressed", "false");
+        group.appendChild(button);
+    });
+    container.appendChild(group);
+}
+
+function markDashboardLoading() {
+    const skeleton = Array.from(
+        { length: Number(topN) },
+        () => '<div class="skeleton skeleton-list-card"></div>',
+    ).join("");
+    ["hof-artists", "hof-albums", "hof-songs"].forEach((id) => {
+        document.getElementById(id).innerHTML = skeleton;
+    });
+    [
+        "kpi-airtime",
+        "kpi-tracks",
+        "kpi-artists",
+        "kpi-avg-streams",
+        "kpi-avg-min",
+    ].forEach((id) => {
+        const element = document.getElementById(id);
+        element.textContent = "\u00a0";
+        element.classList.add("kpi-loading");
+    });
 }
 
 async function updateDashboard() {
-    const yearsParam = selectedYears.join(',');
-    const monthQuery = selectedMonth ? `&month=${selectedMonth}` : '';
-    
-    const skeletonHTML = Array(Number(topN)).fill('<div class="skeleton skeleton-list-card"></div>').join('');
-    document.getElementById('hof-artists').innerHTML = skeletonHTML;
-    document.getElementById('hof-albums').innerHTML = skeletonHTML;
-    document.getElementById('hof-songs').innerHTML = skeletonHTML;
+    const requestId = ++dashboardRequestId;
+    dashboardController?.abort();
+    dashboardController = new AbortController();
+    markDashboardLoading();
+    clearError();
 
-    // Mark KPI as loading
-    const kpiIds = ['kpi-airtime','kpi-tracks','kpi-artists','kpi-avg-streams','kpi-avg-min'];
-    kpiIds.forEach(id => { const el = document.getElementById(id); el.innerText = '\u00a0'; el.classList.add('kpi-loading'); });
+    if (isDemoMode) {
+        const sample = await loadDemoData();
+        if (requestId !== dashboardRequestId) return;
+        renderKpi(sample.kpi);
+        renderTrends(sample.trends);
+        renderClocks(sample.clock);
+        renderHallOfFame({
+            artists: sample.fame.artists.slice(0, topN),
+            albums: sample.fame.albums.slice(0, topN),
+            songs: sample.fame.songs.slice(0, topN),
+        });
+        renderRecentlyPlayed(sample.recently_played.items);
+        return;
+    }
 
-    fetch(`${API_BASE}/stats/kpi?years=${yearsParam}${monthQuery}`)
-        .then(res => res.json())
-        .then(data => {
-            const setKpi = (id, val) => { const el = document.getElementById(id); el.classList.remove('kpi-loading'); el.innerText = val; };
-            setKpi('kpi-airtime', fmt.number(data.airtime_hours) + ' hours');
-            setKpi('kpi-tracks', fmt.number(data.total_tracks));
-            setKpi('kpi-artists', fmt.number(data.total_artists));
-            setKpi('kpi-avg-streams', fmt.number(data.avg_streams_per_day));
-            setKpi('kpi-avg-min', fmt.number(data.avg_min_per_day));
-        })
-        .catch(e => { kpiIds.forEach(id => document.getElementById(id).classList.remove('kpi-loading')); console.error(e); });
+    const yearsParam = encodeURIComponent(selectedYears.join(","));
+    const monthQuery = selectedMonth ? `&month=${selectedMonth}` : "";
+    const signal = dashboardController.signal;
 
-    fetch(`${API_BASE}/stats/trends?years=${yearsParam}${monthQuery}`)
-        .then(res => res.json())
-        .then(data => renderTrends(data))
-        .catch(e => console.error(e));
-
-    fetch(`${API_BASE}/stats/clock?years=${yearsParam}${monthQuery}`)
-        .then(res => res.json())
-        .then(data => renderClocks(data))
-        .catch(e => console.error(e));
-
-    fetch(`${API_BASE}/stats/fame?years=${yearsParam}&top_n=${topN}${monthQuery}`)
-        .then(res => res.json())
-        .then(data => fetchFameWithArtwork(data))
-        .catch(e => console.error(e));
+    try {
+        const [kpi, trends, clock, fame] = await Promise.all([
+            requestJSON(
+                `${API_BASE}/stats/kpi?years=${yearsParam}${monthQuery}`,
+                { signal },
+            ),
+            requestJSON(
+                `${API_BASE}/stats/trends?years=${yearsParam}${monthQuery}`,
+                { signal },
+            ),
+            requestJSON(
+                `${API_BASE}/stats/clock?years=${yearsParam}${monthQuery}`,
+                { signal },
+            ),
+            requestJSON(
+                `${API_BASE}/stats/fame?years=${yearsParam}&top_n=${topN}${monthQuery}`,
+                { signal },
+            ),
+        ]);
+        if (requestId !== dashboardRequestId) return;
+        renderKpi(kpi);
+        renderTrends(trends);
+        renderClocks(clock);
+        await fetchFameWithArtwork(fame, signal, requestId);
+    } catch (error) {
+        if (error.name === "AbortError") return;
+        if (CONFIG.demoFallback) {
+            setDemoMode(true);
+            await updateDashboard();
+            renderLiveUnavailable();
+            return;
+        }
+        finishLoadingOverlays();
+        showError(error.message || "Analytics data could not be loaded.");
+    }
 }
 
-// Renderers
+function renderKpi(data) {
+    const values = {
+        "kpi-airtime": `${fmt.number(data.airtime_hours)} hours`,
+        "kpi-tracks": fmt.number(data.total_tracks),
+        "kpi-artists": fmt.number(data.total_artists),
+        "kpi-avg-streams": fmt.number(data.avg_streams_per_day),
+        "kpi-avg-min": fmt.number(data.avg_min_per_day),
+    };
+    Object.entries(values).forEach(([id, value]) => {
+        const element = document.getElementById(id);
+        element.classList.remove("kpi-loading");
+        element.textContent = value;
+    });
+}
+
+function finishOverlay(id) {
+    document.getElementById(id)?.classList.add("done");
+}
+
+function finishLoadingOverlays() {
+    [
+        "overlay-clock-streams",
+        "overlay-clock-minutes",
+        "overlay-daily",
+        "overlay-dow",
+        "overlay-monthly",
+    ].forEach(finishOverlay);
+}
+
 function renderTrends(data) {
-    // Daily Area Chart
-    const doneOverlay = (id) => { const o = document.getElementById(id); if (o) o.classList.add('done'); };
+    const monthlyColors = data.monthly.map((item) =>
+        !selectedMonth || item.month_id === selectedMonth ? "#d9ff57" : "#344054",
+    );
 
     if (charts.daily) {
-        charts.daily.data.labels = data.daily.map(d => d.date);
-        charts.daily.data.datasets[0].data = data.daily.map(d => d.streams);
+        charts.daily.data.labels = data.daily.map((item) => item.date);
+        charts.daily.data.datasets[0].data = data.daily.map((item) => item.streams);
         charts.daily.update();
-        doneOverlay('overlay-daily');
     } else {
-        const ctxDaily = document.getElementById('trend-daily').getContext('2d');
-        charts.daily = new Chart(ctxDaily, {
-            type: 'line',
+        charts.daily = new Chart(document.getElementById("trend-daily"), {
+            type: "line",
             data: {
-                labels: data.daily.map(d => d.date),
+                labels: data.daily.map((item) => item.date),
                 datasets: [{
-                    label: 'Streams', data: data.daily.map(d => d.streams),
-                    borderColor: '#1DB954', backgroundColor: 'rgba(29, 185, 84, 0.15)',
-                    fill: true, tension: 0.4, pointRadius: 0
-                }]
+                    label: "Streams",
+                    data: data.daily.map((item) => item.streams),
+                    borderColor: "#d9ff57",
+                    backgroundColor: "rgba(217, 255, 87, 0.12)",
+                    fill: true,
+                    tension: 0.35,
+                    pointRadius: 0,
+                }],
             },
             options: {
                 ...commonOptions,
                 plugins: {
                     legend: { display: false },
-                    title: { display: true, text: 'Daily Intensity (Streams per Day)', color: '#fff', font: { size: 16 } },
+                    title: chartTitle("Daily listening intensity"),
                     zoom: {
-                        pan: { enabled: true, mode: 'x' },
-                        zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' }
-                    }
-                }
-            }
-        });
-        doneOverlay('overlay-daily');
-    }
-
-    // DOW Bar Chart
-    if (charts.dow) {
-        charts.dow.data.labels = data.dow.map(d => d.day);
-        charts.dow.data.datasets[0].data = data.dow.map(d => d.streams);
-        charts.dow.update();
-        doneOverlay('overlay-dow');
-    } else {
-        const ctxDow = document.getElementById('trend-dow').getContext('2d');
-        charts.dow = new Chart(ctxDow, {
-            type: 'bar',
-            data: {
-                labels: data.dow.map(d => d.day),
-                datasets: [{ label: 'Streams', data: data.dow.map(d => d.streams), backgroundColor: '#1DB954' }]
+                        pan: { enabled: true, mode: "x" },
+                        zoom: {
+                            wheel: { enabled: true },
+                            pinch: { enabled: true },
+                            mode: "x",
+                        },
+                    },
+                },
             },
-            options: { ...commonOptions, plugins: { legend: { display: false }, title: { display: true, text: 'Distribution by Day', color: '#fff', font: { size: 16 } } } }
         });
-        doneOverlay('overlay-dow');
     }
+    finishOverlay("overlay-daily");
 
-    // Monthly Bar Chart
-    const getMonthlyColors = (monthlyData) => monthlyData.map(d => {
-        if (!selectedMonth) return '#1DB954';
-        return d.month_id === selectedMonth ? '#1DB954' : '#334155';
-    });
-
-    if (charts.monthly) {
-        charts.monthly.data.labels = data.monthly.map(d => d.month);
-        charts.monthly.data.datasets[0].data = data.monthly.map(d => d.streams);
-        charts.monthly.data.datasets[0].backgroundColor = getMonthlyColors(data.monthly);
-        charts.monthly.options.onClick = (e, elements) => {
-            if (elements.length > 0) {
-                const clickedMonthId = data.monthly[elements[0].index].month_id;
-                selectedMonth = (selectedMonth === clickedMonthId) ? null : clickedMonthId;
-                updateDashboard();
-            }
-        };
-        charts.monthly.update();
-        doneOverlay('overlay-monthly');
+    if (charts.dow) {
+        charts.dow.data.labels = data.dow.map((item) => item.day);
+        charts.dow.data.datasets[0].data = data.dow.map((item) => item.streams);
+        charts.dow.update();
     } else {
-        const ctxMonthly = document.getElementById('trend-monthly').getContext('2d');
-        charts.monthly = new Chart(ctxMonthly, {
-            type: 'bar',
+        charts.dow = new Chart(document.getElementById("trend-dow"), {
+            type: "bar",
             data: {
-                labels: data.monthly.map(d => d.month),
-                datasets: [{ label: 'Streams', data: data.monthly.map(d => d.streams), backgroundColor: getMonthlyColors(data.monthly) }]
+                labels: data.dow.map((item) => item.day.slice(0, 3)),
+                datasets: [{
+                    data: data.dow.map((item) => item.streams),
+                    backgroundColor: "#d9ff57",
+                    borderRadius: 7,
+                }],
             },
             options: {
                 ...commonOptions,
-                plugins: { legend: { display: false }, title: { display: true, text: 'Distribution by Month', color: '#fff', font: { size: 16 } } },
-                onClick: (e, elements) => {
-                    if (elements.length > 0) {
-                        const clickedMonthId = data.monthly[elements[0].index].month_id;
-                        selectedMonth = (selectedMonth === clickedMonthId) ? null : clickedMonthId;
-                        updateDashboard();
-                    }
+                plugins: {
+                    legend: { display: false },
+                    title: chartTitle("Distribution by weekday"),
                 },
-                onHover: (e, elements) => { e.native.target.style.cursor = elements.length ? 'pointer' : 'default'; }
-            }
+            },
         });
-        doneOverlay('overlay-monthly');
     }
+    finishOverlay("overlay-dow");
+
+    const onMonthClick = (_event, elements) => {
+        if (!elements.length) return;
+        const monthId = data.monthly[elements[0].index].month_id;
+        selectedMonth = selectedMonth === monthId ? null : monthId;
+        updateDashboard();
+    };
+    if (charts.monthly) {
+        charts.monthly.data.labels = data.monthly.map((item) => item.month);
+        charts.monthly.data.datasets[0].data = data.monthly.map(
+            (item) => item.streams,
+        );
+        charts.monthly.data.datasets[0].backgroundColor = monthlyColors;
+        charts.monthly.options.onClick = onMonthClick;
+        charts.monthly.update();
+    } else {
+        charts.monthly = new Chart(document.getElementById("trend-monthly"), {
+            type: "bar",
+            data: {
+                labels: data.monthly.map((item) => item.month),
+                datasets: [{
+                    data: data.monthly.map((item) => item.streams),
+                    backgroundColor: monthlyColors,
+                    borderRadius: 7,
+                }],
+            },
+            options: {
+                ...commonOptions,
+                plugins: {
+                    legend: { display: false },
+                    title: chartTitle("Distribution by month"),
+                },
+                onClick: onMonthClick,
+                onHover: (event, elements) => {
+                    event.native.target.style.cursor = elements.length
+                        ? "pointer"
+                        : "default";
+                },
+            },
+        });
+    }
+    finishOverlay("overlay-monthly");
+}
+
+function chartTitle(text) {
+    return {
+        display: true,
+        text,
+        align: "start",
+        color: "#f7f8f5",
+        font: { size: 14, weight: "600" },
+        padding: { bottom: 18 },
+    };
 }
 
 function renderClocks(data) {
     const clockOptions = {
-        responsive: true, maintainAspectRatio: false,
-        scales: { r: { grid: { color: '#1e293b' }, angleLines: { color: '#1e293b' }, ticks: { display: false } } },
-        plugins: { legend: { display: false } }
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+            r: {
+                grid: { color: "rgba(148, 163, 184, 0.12)" },
+                angleLines: { color: "rgba(148, 163, 184, 0.12)" },
+                ticks: { display: false },
+            },
+        },
+        plugins: { legend: { display: false } },
     };
 
-    const doneClockOverlay = (id) => { const o = document.getElementById(id); if (o) o.classList.add('done'); };
-
+    const labels = data.map((item) => `${item.hour}:00`);
     if (charts.clockStreams) {
-        charts.clockStreams.data.labels = data.map(d => `Hour ${d.hour}:00`);
-        charts.clockStreams.data.datasets[0].data = data.map(d => d.streams);
+        charts.clockStreams.data.labels = labels;
+        charts.clockStreams.data.datasets[0].data = data.map(
+            (item) => item.streams,
+        );
         charts.clockStreams.update();
-        doneClockOverlay('overlay-clock-streams');
     } else {
-        const ctxStreams = document.getElementById('clock-streams').getContext('2d');
-        charts.clockStreams = new Chart(ctxStreams, {
-            type: 'polarArea',
+        charts.clockStreams = new Chart(document.getElementById("clock-streams"), {
+            type: "polarArea",
             data: {
-                labels: data.map(d => `Hour ${d.hour}:00`),
-                datasets: [{ data: data.map(d => d.streams), backgroundColor: 'rgba(29, 185, 84, 0.7)', borderColor: '#1DB954', borderWidth: 1 }]
+                labels,
+                datasets: [{
+                    data: data.map((item) => item.streams),
+                    backgroundColor: "rgba(217, 255, 87, 0.52)",
+                    borderColor: "#d9ff57",
+                    borderWidth: 1,
+                }],
             },
-            options: { ...clockOptions, plugins: { legend: { display: false }, title: { display: true, text: 'Streams by Hour', color: '#fff', font: { size: 16 } } } }
+            options: {
+                ...clockOptions,
+                plugins: {
+                    legend: { display: false },
+                    title: chartTitle("Streams by hour"),
+                },
+            },
         });
-        doneClockOverlay('overlay-clock-streams');
     }
+    finishOverlay("overlay-clock-streams");
 
-    if (charts.clockMins) {
-        charts.clockMins.data.labels = data.map(d => `Hour ${d.hour}:00`);
-        charts.clockMins.data.datasets[0].data = data.map(d => d.minutes);
-        charts.clockMins.update();
-        doneClockOverlay('overlay-clock-minutes');
+    if (charts.clockMinutes) {
+        charts.clockMinutes.data.labels = labels;
+        charts.clockMinutes.data.datasets[0].data = data.map(
+            (item) => item.minutes,
+        );
+        charts.clockMinutes.update();
     } else {
-        const ctxMins = document.getElementById('clock-minutes').getContext('2d');
-        charts.clockMins = new Chart(ctxMins, {
-            type: 'polarArea',
-            data: {
-                labels: data.map(d => `Hour ${d.hour}:00`),
-                datasets: [{ data: data.map(d => d.minutes), backgroundColor: 'rgba(29, 185, 84, 0.7)', borderColor: '#1DB954', borderWidth: 1 }]
+        charts.clockMinutes = new Chart(
+            document.getElementById("clock-minutes"),
+            {
+                type: "polarArea",
+                data: {
+                    labels,
+                    datasets: [{
+                        data: data.map((item) => item.minutes),
+                        backgroundColor: "rgba(116, 232, 204, 0.5)",
+                        borderColor: "#74e8cc",
+                        borderWidth: 1,
+                    }],
+                },
+                options: {
+                    ...clockOptions,
+                    plugins: {
+                        legend: { display: false },
+                        title: chartTitle("Minutes by hour"),
+                    },
+                },
             },
-            options: { ...clockOptions, plugins: { legend: { display: false }, title: { display: true, text: 'Minutes Streamed by Hour', color: '#fff', font: { size: 16 } } } }
-        });
-        doneClockOverlay('overlay-clock-minutes');
+        );
     }
+    finishOverlay("overlay-clock-minutes");
 }
 
-function getCardHTML(idx, type, title, subtitle, value, img, artistName=null) {
-    const delay = Math.min(idx * 0.02, 1.0);
-    const isArtist = type === 'artist';
-    const subHTML = subtitle ? `<p class="list-subtitle">${subtitle}</p>` : "";
-    const safeTitle = title.replace(/"/g, '&quot;');
-    const safeArtist = artistName ? artistName.replace(/"/g, '&quot;') : '';
-
-    // KEY FIX: If no image URL yet, omit src entirely.
-    // src="" causes browsers to fire onerror IMMEDIATELY (shows ugly fallback icon).
-    // With no src, the img-loader shimmer stays visible until we set src via JS.
-    const srcAttr = img ? `src="${img}"` : '';
-    const loadedClass = img ? 'loaded' : '';
-
+function getCardHTML(index, type, title, subtitle, minutes, imageURL) {
+    const delay = Math.min(index * 0.025, 0.5);
+    const artwork = safeImageURL(imageURL);
     return `
-        <div class="list-card" style="animation-delay: ${delay}s;">
-            <div class="list-rank">#${idx+1}</div>
-            <div class="img-loader ${isArtist ? 'artist' : ''}">
-                <img ${srcAttr}
-                     class="${loadedClass}"
-                     data-name="${safeTitle}" data-type="${type}" data-artist="${safeArtist}"
-                     onload="this.classList.add('loaded')"
-                     onerror="this.src='https://cdn-icons-png.flaticon.com/512/33/33714.png';this.classList.add('loaded')">
+        <article class="list-card" style="animation-delay:${delay}s">
+            <div class="list-rank">#${index + 1}</div>
+            <div class="img-loader ${type === "artist" ? "artist" : ""}">
+                <img
+                    src="${escapeHTML(artwork)}"
+                    alt=""
+                    class="loaded"
+                    data-item-key="${type}-${index}"
+                >
             </div>
             <div class="list-details">
-                <p class="list-title">${title}</p>
-                ${subHTML}
+                <p class="list-title">${escapeHTML(title)}</p>
+                ${subtitle ? `<p class="list-subtitle">${escapeHTML(subtitle)}</p>` : ""}
             </div>
-            <div class="list-stats">${fmt.number(value/60)}h</div>
-        </div>
+            <div class="list-stats">${fmt.number(minutes / 60)}h</div>
+        </article>
     `;
 }
 
-
 function renderHallOfFame(data) {
-    let artHTML = "";
-    data.artists.forEach((r, i) => artHTML += getCardHTML(i, 'artist', r.artist_name, null, r.minutes, r.image_url));
-    document.getElementById('hof-artists').innerHTML = artHTML;
+    document.getElementById("hof-artists").innerHTML = data.artists
+        .map((item, index) =>
+            getCardHTML(
+                index,
+                "artist",
+                item.artist_name,
+                "Artist",
+                item.minutes,
+                item.image_url,
+            ),
+        )
+        .join("");
+    document.getElementById("hof-albums").innerHTML = data.albums
+        .map((item, index) =>
+            getCardHTML(
+                index,
+                "album",
+                item.album_name,
+                item.artist_name,
+                item.minutes,
+                item.image_url,
+            ),
+        )
+        .join("");
+    document.getElementById("hof-songs").innerHTML = data.songs
+        .map((item, index) =>
+            getCardHTML(
+                index,
+                "track",
+                item.track_name,
+                item.artist_name,
+                item.minutes,
+                item.image_url,
+            ),
+        )
+        .join("");
 
-    let albHTML = "";
-    data.albums.forEach((r, i) => albHTML += getCardHTML(i, 'album', r.album_name, "Album", r.minutes, r.image_url, r.artist_name));
-    document.getElementById('hof-albums').innerHTML = albHTML;
-
-    let sngHTML = "";
-    data.songs.forEach((r, i) => sngHTML += getCardHTML(i, 'track', r.track_name, r.artist_name, r.minutes, r.image_url, r.artist_name));
-    document.getElementById('hof-songs').innerHTML = sngHTML;
+    document.querySelectorAll(".img-loader img").forEach((image) => {
+        image.addEventListener(
+            "error",
+            () => {
+                image.src = PLACEHOLDER_ART;
+            },
+            { once: true },
+        );
+    });
 }
 
-async function fetchFameWithArtwork(data) {
-    // IMPROVEMENT: Render immediately with placeholders (no more waiting for artwork)
+async function fetchFameWithArtwork(data, signal, requestId) {
     renderHallOfFame(data);
-    
-    // Then fetch artwork in parallel batches of 5 for speed
     const items = [
-        ...data.artists.map(a => ({ obj: a, type: 'artist', name: a.artist_name, artist: '' })),
-        ...data.albums.map(a => ({ obj: a, type: 'album', name: a.album_name, artist: a.artist_name })),
-        ...data.songs.map(a => ({ obj: a, type: 'track', name: a.track_name, artist: a.artist_name }))
+        ...data.artists.map((item, index) => ({
+            item,
+            key: `artist-${index}`,
+            type: "artist",
+            name: item.artist_name,
+            artist: "",
+        })),
+        ...data.albums.map((item, index) => ({
+            item,
+            key: `album-${index}`,
+            type: "album",
+            name: item.album_name,
+            artist: item.artist_name,
+        })),
+        ...data.songs.map((item, index) => ({
+            item,
+            key: `track-${index}`,
+            type: "track",
+            name: item.track_name,
+            artist: item.artist_name,
+        })),
     ];
 
-    const BATCH_SIZE = 5;
-    for (let i = 0; i < items.length; i += BATCH_SIZE) {
-        const batch = items.slice(i, i + BATCH_SIZE);
-        await Promise.all(batch.map(async (item) => {
-            if (!item.obj.image_url) {
-                const url = `${API_BASE}/spotify/artwork?name=${encodeURIComponent(item.name)}&type=${encodeURIComponent(item.type)}&artist_name=${encodeURIComponent(item.artist)}`;
+    const batchSize = 5;
+    for (let offset = 0; offset < items.length; offset += batchSize) {
+        if (signal.aborted || requestId !== dashboardRequestId) return;
+        const batch = items.slice(offset, offset + batchSize);
+        await Promise.all(
+            batch.map(async ({ key, type, name, artist }) => {
+                const query = new URLSearchParams({
+                    name,
+                    type,
+                    artist_name: artist,
+                });
                 try {
-                    const res = await fetch(url);
-                    const json = await res.json();
-                    if (json.image_url) {
-                        item.obj.image_url = json.image_url;
-                        // Update DOM directly — no full re-render needed
-                        const imgEl = document.querySelector(`img[data-name="${item.name.replace(/"/g, '&quot;')}"][data-type="${item.type}"]`);
-                        if (imgEl) imgEl.src = json.image_url;
+                    const result = await requestJSON(
+                        `${API_BASE}/spotify/artwork?${query}`,
+                        { signal },
+                    );
+                    const image = document.querySelector(
+                        `img[data-item-key="${key}"]`,
+                    );
+                    if (image && result.image_url) {
+                        image.src = safeImageURL(result.image_url);
                     }
-                } catch(e) {}
-            }
-        }));
-        await new Promise(r => setTimeout(r, 150)); // brief pause between batches
+                } catch (error) {
+                    if (error.name !== "AbortError") {
+                        console.warn(`Artwork unavailable for ${type}.`);
+                    }
+                }
+            }),
+        );
     }
 }
 
-// --- LIVE PULSE ---
-let currentTrackId = null;
+function renderNowPlaying(data) {
+    const container = document.getElementById("np-container");
+    if (!data?.is_playing) {
+        container.replaceChildren();
+        currentTrackId = null;
+        return;
+    }
+    if (currentTrackId === data.track_id) return;
+    currentTrackId = data.track_id;
+
+    const bar = document.createElement("section");
+    bar.className = "now-playing-bar fade-in";
+    bar.setAttribute("aria-label", "Now playing");
+
+    const details = document.createElement("div");
+    details.className = "np-details";
+    const liveDot = document.createElement("span");
+    liveDot.className = "live-dot";
+    liveDot.setAttribute("aria-hidden", "true");
+    const image = document.createElement("img");
+    image.src = safeImageURL(data.image_url);
+    image.alt = "";
+    image.className = "np-cover";
+    image.addEventListener("error", () => {
+        image.src = PLACEHOLDER_ART;
+    }, { once: true });
+
+    const text = document.createElement("div");
+    text.className = "np-text";
+    const label = document.createElement("p");
+    label.className = "np-label";
+    label.textContent = "Now playing";
+    const title = document.createElement("h4");
+    title.textContent = data.track_name || "Unknown track";
+    const artist = document.createElement("p");
+    artist.textContent = data.artist_name || "Unknown artist";
+    text.append(label, title, artist);
+    details.append(liveDot, image, text);
+    bar.append(details);
+    container.replaceChildren(bar);
+}
+
 async function fetchNowPlaying() {
     try {
-        const res = await fetch(`${API_BASE}/spotify/now-playing`);
-        if (!res.ok) return;
-        const data = await res.json();
-        const npContainer = document.getElementById('np-container');
-
-        if (data.is_playing) {
-            if (currentTrackId !== data.track_id) {
-                currentTrackId = data.track_id;
-                npContainer.innerHTML = `
-                    <div class="now-playing-bar fade-in">
-                        <div class="np-details">
-                            <div class="live-dot"></div>
-                            <img src="${data.image_url || 'https://cdn-icons-png.flaticon.com/512/33/33714.png'}"
-                                 style="width:55px;height:55px;border-radius:6px;object-fit:cover;box-shadow:0 0 12px rgba(29,185,84,0.5);">
-                            <div class="np-text">
-                                <p style="color:#1DB954;font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;margin:0;">▶ Now Playing</p>
-                                <h4>${data.track_name}</h4>
-                                <p style="color:#94a3b8;font-weight:normal;">${data.artist_name}</p>
-                            </div>
-                        </div>
-                        <div style="color:#1DB954;font-size:22px;">🎵</div>
-                    </div>`;
-            }
-        } else {
-            if (currentTrackId !== null) {
-                currentTrackId = null;
-                npContainer.innerHTML = '';
-            }
-        }
-    } catch (e) {}
-}
-
-let lastPlayedAt = null;
-async function fetchRecentlyPlayed() {
-    try {
-        const res = await fetch(`${API_BASE}/spotify/recently-played?limit=10`);
-        if (!res.ok) {
-            const tbody = document.getElementById('recent-tbody');
-            if (tbody.innerHTML.includes("Loading")) {
-                tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:#94a3b8;padding:20px;">
-                    ⏸️ Spotify API sedang beristirahat. Data akan kembali otomatis.<br>
-                    <small style="color:#475569;">Cron job tetap berjalan di background.</small>
-                </td></tr>`;
-            }
-            return;
-        }
-        const data = await res.json();
-        if (data.items && data.items.length > 0) {
-            if (lastPlayedAt !== data.items[0].played_at) {
-                lastPlayedAt = data.items[0].played_at;
-                const tbody = document.getElementById('recent-tbody');
-                let html = '';
-                data.items.forEach(t => {
-                    const timeStr = new Date(t.played_at).toLocaleString('id-ID', {
-                        day: '2-digit', month: 'short', hour: '2-digit', minute:'2-digit'
-                    });
-                    html += `
-                        <tr>
-                            <td><img src="${t.image_url || 'https://cdn-icons-png.flaticon.com/512/33/33714.png'}" class="cover-img"></td>
-                            <td class="time-col">${timeStr}</td>
-                            <td class="track-title">${t.track_name}</td>
-                            <td class="artist-name">${t.artist_name}</td>
-                        </tr>`;
-                });
-                tbody.innerHTML = html;
-            }
-        }
-    } catch (e) {
-        console.error("Recently Played Error:", e);
+        const data = await requestJSON(`${API_BASE}/spotify/now-playing`);
+        renderNowPlaying(data);
+    } catch {
+        renderNowPlaying({ is_playing: false });
     }
 }
 
-// Mobile sidebar toggle
-function toggleSidebar() {
-    const sidebar = document.querySelector('.sidebar');
-    const overlay = document.getElementById('sidebar-overlay');
-    isMobileMenuOpen = !isMobileMenuOpen;
-    sidebar.classList.toggle('open', isMobileMenuOpen);
-    overlay.classList.toggle('visible', isMobileMenuOpen);
-    document.body.style.overflow = isMobileMenuOpen ? 'hidden' : '';
+function renderRecentlyPlayed(items) {
+    const body = document.getElementById("recent-tbody");
+    body.replaceChildren();
+
+    if (!items?.length) {
+        const row = document.createElement("tr");
+        const cell = document.createElement("td");
+        cell.colSpan = 4;
+        cell.className = "table-message";
+        cell.textContent = "No recent listening activity is available.";
+        row.appendChild(cell);
+        body.appendChild(row);
+        return;
+    }
+
+    items.forEach((item) => {
+        const row = document.createElement("tr");
+        const coverCell = document.createElement("td");
+        const cover = document.createElement("img");
+        cover.src = safeImageURL(item.image_url);
+        cover.alt = "";
+        cover.className = "cover-img";
+        cover.addEventListener("error", () => {
+            cover.src = PLACEHOLDER_ART;
+        }, { once: true });
+        coverCell.appendChild(cover);
+
+        const timeCell = document.createElement("td");
+        timeCell.className = "time-col";
+        timeCell.textContent = fmt.time(item.played_at);
+        const trackCell = document.createElement("td");
+        trackCell.className = "track-title";
+        trackCell.textContent = item.track_name || "Unknown track";
+        const artistCell = document.createElement("td");
+        artistCell.className = "artist-name";
+        artistCell.textContent = item.artist_name || "Unknown artist";
+        row.append(coverCell, timeCell, trackCell, artistCell);
+        body.appendChild(row);
+    });
 }
 
-// Event Listeners
+async function fetchRecentlyPlayed() {
+    try {
+        const data = await requestJSON(
+            `${API_BASE}/spotify/recently-played?limit=10`,
+        );
+        if (data.items?.[0]?.played_at === lastPlayedAt) return;
+        lastPlayedAt = data.items?.[0]?.played_at || null;
+        renderRecentlyPlayed(data.items);
+    } catch {
+        renderLiveUnavailable();
+    }
+}
+
+function renderLiveUnavailable() {
+    if (isDemoMode && demoData?.recently_played?.items) {
+        renderRecentlyPlayed(demoData.recently_played.items);
+        return;
+    }
+    const body = document.getElementById("recent-tbody");
+    body.replaceChildren();
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.colSpan = 4;
+    cell.className = "table-message";
+    cell.textContent =
+        "Private live activity is disabled in the public portfolio deployment.";
+    row.appendChild(cell);
+    body.appendChild(row);
+}
+
+function toggleSidebar() {
+    isMobileMenuOpen = !isMobileMenuOpen;
+    document
+        .getElementById("filter-sidebar")
+        .classList.toggle("open", isMobileMenuOpen);
+    document
+        .getElementById("sidebar-overlay")
+        .classList.toggle("visible", isMobileMenuOpen);
+    document.body.style.overflow = isMobileMenuOpen ? "hidden" : "";
+
+    const button = document.getElementById("hamburger-btn");
+    button.setAttribute("aria-expanded", String(isMobileMenuOpen));
+    button.setAttribute(
+        "aria-label",
+        isMobileMenuOpen ? "Close filters" : "Open filters",
+    );
+}
+
 function setupEventListeners() {
-    const slider = document.getElementById('top-n-slider');
-    slider.addEventListener('change', (e) => {
-        topN = e.target.value;
-        document.getElementById('top-n-value').innerText = topN;
-        updateDashboard();
+    const slider = document.getElementById("top-n-slider");
+    slider.addEventListener("input", (event) => {
+        topN = Number(event.target.value);
+        document.getElementById("top-n-value").value = String(topN);
     });
+    slider.addEventListener("change", updateDashboard);
 
-    document.getElementById('sidebar-overlay').addEventListener('click', toggleSidebar);
-    document.getElementById('hamburger-btn').addEventListener('click', toggleSidebar);
+    document.getElementById("retry-button").addEventListener("click", async () => {
+        isDemoMode = false;
+        demoData = null;
+        setConnectionState("checking");
+        try {
+            await fetchYears();
+            await updateDashboard();
+        } catch (error) {
+            showError(error.message || "Retry failed.");
+        }
+    });
+    document
+        .getElementById("sidebar-overlay")
+        .addEventListener("click", toggleSidebar);
+    document
+        .getElementById("hamburger-btn")
+        .addEventListener("click", toggleSidebar);
 
-    // Filter Chips (Multi-Select & Single-Select Mode)
-    document.addEventListener('click', (e) => {
-        if(e.target.classList.contains('filter-chip')) {
-            const clickedVal = e.target.getAttribute('data-value');
-            const isMultiMode = document.getElementById('multi-select-toggle').checked;
+    document
+        .getElementById("year-filters")
+        .addEventListener("click", (event) => {
+            const button = event.target.closest("button.filter-chip");
+            if (!button) return;
 
-            if (clickedVal === 'all') {
-                document.querySelectorAll('.filter-chip').forEach(chip => chip.classList.remove('active'));
-                e.target.classList.add('active');
+            const clickedValue = button.dataset.value;
+            const multiMode = document.getElementById(
+                "multi-select-toggle",
+            ).checked;
+            const buttons = document.querySelectorAll(".filter-chip");
+            const allButton = document.querySelector(
+                '.filter-chip[data-value="all"]',
+            );
+
+            if (clickedValue === "all") {
+                buttons.forEach((chip) => {
+                    chip.classList.remove("active");
+                    chip.setAttribute("aria-pressed", "false");
+                });
+                button.classList.add("active");
+                button.setAttribute("aria-pressed", "true");
                 selectedYears = [...allAvailableYears];
+            } else if (!multiMode) {
+                buttons.forEach((chip) => {
+                    chip.classList.remove("active");
+                    chip.setAttribute("aria-pressed", "false");
+                });
+                button.classList.add("active");
+                button.setAttribute("aria-pressed", "true");
+                selectedYears = [Number(clickedValue)];
             } else {
-                const allChip = document.querySelector('.filter-chip[data-value="all"]');
-                if (!isMultiMode) {
-                    document.querySelectorAll('.filter-chip').forEach(chip => chip.classList.remove('active'));
-                    e.target.classList.add('active');
-                    selectedYears = [clickedVal];
-                } else {
-                    if (allChip && allChip.classList.contains('active')) {
-                        allChip.classList.remove('active');
-                        e.target.classList.add('active');
-                        selectedYears = [clickedVal];
-                    } else {
-                        e.target.classList.toggle('active');
-                        selectedYears = [];
-                        document.querySelectorAll('.filter-chip.active').forEach(chip => {
-                            const val = chip.getAttribute('data-value');
-                            if (val !== 'all') selectedYears.push(val);
-                        });
-                        if (selectedYears.length === 0) {
-                            showToast("Peringatan: Anda wajib memilih minimal satu tahun!");
-                            e.target.classList.add('active');
-                            selectedYears = [clickedVal];
-                        }
-                    }
+                allButton?.classList.remove("active");
+                allButton?.setAttribute("aria-pressed", "false");
+                button.classList.toggle("active");
+                button.setAttribute(
+                    "aria-pressed",
+                    String(button.classList.contains("active")),
+                );
+                selectedYears = Array.from(
+                    document.querySelectorAll(
+                        '.filter-chip.active:not([data-value="all"])',
+                    ),
+                    (chip) => Number(chip.dataset.value),
+                );
+                if (!selectedYears.length) {
+                    button.classList.add("active");
+                    button.setAttribute("aria-pressed", "true");
+                    selectedYears = [Number(clickedValue)];
+                    showToast("Select at least one year.");
                 }
             }
             updateDashboard();
-        }
-    });
+        });
 }
 
-// Start
 init();

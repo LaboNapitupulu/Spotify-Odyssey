@@ -1,90 +1,175 @@
-# Spotify Odyssey: Personal Audio Analytics
+# Spotify Odyssey
 
-A full-stack, real-time analytics dashboard engineered to track, process, and visualize personal Spotify streaming history. 
+Spotify Odyssey is a privacy-conscious personal listening analytics dashboard. It transforms Spotify Extended Streaming History into interactive time patterns, rankings, and listening summaries while keeping private live activity disabled in public deployments by default.
 
-![Python](https://img.shields.io/badge/Python-3.9%2B-blue?style=flat-square&logo=python)
-![FastAPI](https://img.shields.io/badge/FastAPI-0.95%2B-009688?style=flat-square&logo=fastapi)
-![SQLite](https://img.shields.io/badge/SQLite-Data%2B-lightgrey?style=flat-square&logo=sqlite)
-![JavaScript](https://img.shields.io/badge/JavaScript-Vanilla-F7DF1E?style=flat-square&logo=javascript)
+## Highlights
 
----
+- Interactive year, month, and ranking-size filters
+- Daily, weekday, monthly, and hourly listening analysis
+- Top artist, album, and track rankings
+- PostgreSQL-backed import and artwork cache
+- Optional owner-only now-playing and recently-played features
+- Synthetic portfolio demo mode when the private API is unavailable
+- Responsive, accessible vanilla JavaScript interface
 
-## Project Overview
+## Architecture
 
-Instead of relying on end-of-year summaries like Spotify Wrapped, this application provides an interactive, live look at listening habits. It integrates directly with the Spotify Web API to process raw streaming JSON data and fetch live playback states, presenting the insights through a custom-built, zero-framework dashboard.
+```text
+Spotify history JSON
+        |
+        v
+scripts/process_raw_data.py
+        |
+        v
+PostgreSQL <---- Spotify Web API
+        |               |
+        v               v
+FastAPI analytics + private live endpoints
+        |
+        v
+Vanilla JavaScript + Chart.js dashboard
+```
 
----
+## Privacy model
 
-## Core Features
+The repository contains no personal listening export, database, OAuth token, or Spotify secret.
 
-- **Live Pulse (Real-Time Playback):** Connects to the Spotify API to display the currently playing track in real-time.
-- **Interactive Data Cross-Filtering:** Features an interactive dashboard architecture where selecting a specific metric (e.g., a month in the bar chart) automatically recalculates and filters all other components (KPIs, top tracks, time-of-day clocks) without page reloads.
-- **Automated Data Pipeline:** 
-  - Ingests and parses massive "Extended Streaming History" JSON dumps into a highly indexed SQLite database.
-  - Implements a background collector script (`spotify_collector.py`) that periodically fetches the 50 most recent streams and appends them to the database to ensure data currency.
-- **Custom UI Architecture:** A zero-dependency vanilla frontend constructed from scratch, styled to match modern dark-mode design systems.
+- `data_raw/`, `data_processed/`, `.streamlit/`, `.cache`, `.env*`, and exported CSV files are ignored.
+- Docker excludes those files independently through `.dockerignore`.
+- Public deployments use `frontend/demo-data.json` when the analytics API is unavailable.
+- Live Spotify endpoints are disabled unless `ENABLE_LIVE_SPOTIFY=true`.
+- A `PRIVATE_API_KEY` is required for live endpoints outside localhost.
+- `/api/sync` is a protected `POST` endpoint.
 
----
+The bundled demo dataset is synthetic and does not represent a real Spotify account.
 
-## Technical Stack
+## Requirements
 
-- **Backend:** Python, FastAPI, SQLite
-- **Data Processing:** Pandas
-- **API Integration:** Spotipy (Spotify Web API)
-- **Frontend:** Vanilla JavaScript, HTML5, CSS3, Chart.js
+- Python 3.11
+- PostgreSQL
+- A Spotify Developer application for artwork or optional live features
 
----
+## Local setup
 
-## Getting Started
-
-### Prerequisites
-- Python 3.9+
-- A Spotify Developer account (Client ID & Client Secret)
-
-### Installation & Setup
-
-**1. Clone the repository:**
 ```bash
-git clone https://github.com/LaboNapitupulu/ProjectSpotify.git
-cd ProjectSpotify
+git clone https://github.com/LaboNapitupulu/Spotify-Odyssey.git
+cd Spotify-Odyssey
+
+python -m venv .venv
+# Windows
+.venv\Scripts\activate
+# macOS/Linux
+source .venv/bin/activate
+
+pip install -r requirements-dev.txt
 ```
 
-**2. Install backend dependencies:**
-```bash
-pip install fastapi uvicorn spotipy pandas
+Copy `.env.example` to `.env` and load those values into your shell or deployment platform.
+
+Required for analytics:
+
+```env
+DATABASE_URL=postgresql://user:password@host:5432/database?sslmode=require
 ```
 
-**3. Configure Spotify Credentials:**
-Create a `.streamlit/secrets.toml` file in the project root and add your Spotify Developer credentials:
-```toml
-[spotify]
-client_id = "YOUR_CLIENT_ID"
-client_secret = "YOUR_CLIENT_SECRET"
-redirect_uri = "http://localhost:8080"
+Optional Spotify configuration:
+
+```env
+SPOTIFY_CLIENT_ID=...
+SPOTIFY_CLIENT_SECRET=...
+SPOTIFY_REDIRECT_URI=http://127.0.0.1:8080/
 ```
 
-**4. Authenticate Account:**
-Run the authentication script to generate your user token:
-```bash
-python auth_spotify.py
-```
+Import Extended Streaming History:
 
-**5. Ingest Raw Data:**
-Place your downloaded Spotify JSON history files into the `data_raw/` directory, then execute the data processor to build the SQLite database:
 ```bash
 python scripts/process_raw_data.py
 ```
 
-**6. Start the API Server:**
+Start the application:
+
 ```bash
-python -m uvicorn backend.main:app --port 8000
+uvicorn backend.main:app --host 127.0.0.1 --port 8000
 ```
 
-**7. Launch the Application:**
-Open `frontend/index.html` in any modern web browser to view the dashboard.
+Open [http://127.0.0.1:8000](http://127.0.0.1:8000).
 
----
+## Optional private live features
 
-## Privacy Notice
+Authorize the project-owner account from a trusted local machine:
 
-The `.gitignore` configuration strictly blocks `data_processed/spotify_data.db` and any credential files. Personal streaming history and API tokens will never be pushed to version control.
+```bash
+python auth_spotify.py
+```
+
+Enable live endpoints locally:
+
+```env
+ENABLE_LIVE_SPOTIFY=true
+```
+
+For any non-local deployment, also configure a long random value:
+
+```env
+PRIVATE_API_KEY=replace_with_a_long_random_value
+```
+
+Trigger a protected synchronization:
+
+```bash
+curl -X POST \
+  -H "X-API-Key: replace_with_a_long_random_value" \
+  https://your-domain.example/api/sync
+```
+
+Do not embed `PRIVATE_API_KEY` in public frontend code.
+
+## Portfolio deployment
+
+The safest public portfolio setup is static-only:
+
+1. Deploy `frontend/` to a static host.
+2. Keep `liveEnabled: false` in `frontend/config.js`.
+3. The dashboard uses the synthetic demo dataset automatically.
+4. Link the repository and architecture documentation from your portfolio.
+
+Vercel can serve both the static frontend and FastAPI adapter using `vercel.json`. Without `DATABASE_URL`, the API reports a degraded health state and the frontend safely falls back to demo mode.
+
+The Docker image runs as a non-root user on port `7860`:
+
+```bash
+docker build -t spotify-odyssey .
+docker run --rm -p 7860:7860 --env-file .env spotify-odyssey
+```
+
+## API
+
+| Method | Endpoint | Access |
+|---|---|---|
+| `GET` | `/api/health` | Public |
+| `GET` | `/api/stats/years` | Public aggregate |
+| `GET` | `/api/stats/kpi` | Public aggregate |
+| `GET` | `/api/stats/clock` | Public aggregate |
+| `GET` | `/api/stats/trends` | Public aggregate |
+| `GET` | `/api/stats/fame` | Public aggregate |
+| `GET` | `/api/spotify/artwork` | Public, validated |
+| `GET` | `/api/spotify/now-playing` | Private |
+| `GET` | `/api/spotify/recently-played` | Private |
+| `POST` | `/api/sync` | Private |
+
+Only deploy the aggregate endpoints with a database you are comfortable presenting publicly. Use the synthetic static mode when the original listening history must remain private.
+
+## Quality checks
+
+```bash
+python -m pytest
+python -m compileall -q backend api scripts
+node --check frontend/app.js
+```
+
+## Data correctness
+
+- Listening events are unique by timestamp, track, and artist.
+- Imports and Spotify synchronization use conflict-safe inserts.
+- Track counts distinguish identical titles by different artists.
+- “Per day” metrics mean active listening days, avoiding misleading gaps between non-contiguous year filters.

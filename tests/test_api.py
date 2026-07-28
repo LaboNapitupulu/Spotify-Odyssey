@@ -1,0 +1,64 @@
+from fastapi import HTTPException
+from fastapi.testclient import TestClient
+import pytest
+
+from backend import main
+
+
+def test_parse_years_normalizes_and_deduplicates():
+    assert main.parse_years("2024, 2022,2024") == [2022, 2024]
+    assert main.parse_years(None) is None
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["not-a-year", "1899", "2020,,not-valid", ",".join(["2024"] * 41)],
+)
+def test_parse_years_rejects_invalid_values(value):
+    with pytest.raises(HTTPException) as error:
+        main.parse_years(value)
+    assert error.value.status_code == 422
+
+
+def test_health_reports_degraded_without_database(monkeypatch):
+    monkeypatch.setattr(
+        main.database,
+        "init_db",
+        lambda: (_ for _ in ()).throw(RuntimeError("offline")),
+    )
+    monkeypatch.setattr(main.database, "close_pool", lambda: None)
+    monkeypatch.setattr(main, "_load_spotify_credentials", lambda: (None, None, ""))
+
+    with TestClient(main.app, raise_server_exceptions=False) as client:
+        response = client.get("/api/health")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "degraded"
+    assert response.json()["database_ready"] is False
+
+
+def test_private_spotify_routes_are_disabled_by_default(monkeypatch):
+    monkeypatch.setattr(main, "LIVE_SPOTIFY_ENABLED", False)
+    monkeypatch.setattr(main.database, "init_db", lambda: None)
+    monkeypatch.setattr(main.database, "close_pool", lambda: None)
+    monkeypatch.setattr(main, "_load_spotify_credentials", lambda: (None, None, ""))
+
+    with TestClient(main.app) as client:
+        now_playing = client.get("/api/spotify/now-playing")
+        sync = client.post("/api/sync")
+
+    assert now_playing.status_code == 404
+    assert sync.status_code == 404
+
+
+def test_query_bounds_are_enforced(monkeypatch):
+    monkeypatch.setattr(main.database, "init_db", lambda: None)
+    monkeypatch.setattr(main.database, "close_pool", lambda: None)
+    monkeypatch.setattr(main, "_load_spotify_credentials", lambda: (None, None, ""))
+
+    with TestClient(main.app) as client:
+        invalid_month = client.get("/api/stats/kpi?month=13")
+        excessive_ranking = client.get("/api/stats/fame?top_n=500")
+
+    assert invalid_month.status_code == 422
+    assert excessive_ranking.status_code == 422

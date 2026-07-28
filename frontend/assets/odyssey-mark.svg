@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Spotify Odyssey mark</title>
+  <rect width="64" height="64" rx="18" fill="#d9ff57"/>
+  <path d="M16 37c10-7 22-7 32 0" fill="none" stroke="#0a0d12" stroke-width="5" stroke-linecap="round"/>
+  <path d="M19 28c8-5 18-5 26 0" fill="none" stroke="#0a0d12" stroke-width="5" stroke-linecap="round"/>
+  <path d="M23 19c6-3 12-3 18 0" fill="none" stroke="#0a0d12" stroke-width="5" stroke-linecap="round"/>
+  <circle cx="32" cy="46" r="3" fill="#0a0d12"/>
+</svg>

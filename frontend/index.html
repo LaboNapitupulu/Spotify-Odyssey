@@ -1,162 +1,219 @@
-<!DOCTYPE html>
-<html lang="id">
+<!doctype html>
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Spotify Odyssey</title>
-    <meta name="description" content="Dashboard personal untuk memvisualisasikan riwayat mendengarkan musik Spotify Anda.">
-    <link rel="icon" href="https://storage.googleapis.com/pr-newsroom-wp/1/2018/11/Spotify_Logo_RGB_Green.png">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <meta name="theme-color" content="#080b12">
+    <meta
+        name="description"
+        content="Spotify Odyssey turns listening history into a privacy-conscious, interactive analytics story."
+    >
+    <title>Spotify Odyssey — Personal Listening Analytics</title>
+    <link rel="icon" type="image/svg+xml" href="assets/odyssey-mark.svg">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+        rel="stylesheet"
+    >
     <link rel="stylesheet" href="styles.css">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+    <script defer src="config.js"></script>
+    <script defer src="app.js"></script>
 </head>
 <body>
-    <!-- Mobile Overlay Backdrop -->
-    <div id="sidebar-overlay"></div>
+    <div id="sidebar-overlay" aria-hidden="true"></div>
 
-    <!-- Mobile Hamburger Button -->
-    <button id="hamburger-btn" aria-label="Open menu">
+    <button
+        id="hamburger-btn"
+        type="button"
+        aria-label="Open filters"
+        aria-controls="filter-sidebar"
+        aria-expanded="false"
+    >
         <span></span><span></span><span></span>
     </button>
 
-    <div id="global-loader" class="hidden">
-        <div class="spinner"></div>
-    </div>
-    
-    <!-- Sidebar -->
-    <aside class="sidebar">
-        <img src="https://storage.googleapis.com/pr-newsroom-wp/1/2018/11/Spotify_Logo_RGB_Green.png" alt="Spotify" class="logo">
-        <div class="status-badge">⚡ JS Live Engine: Active</div>
+    <aside class="sidebar" id="filter-sidebar" aria-label="Dashboard filters">
+        <a class="brand-lockup" href="/" aria-label="Spotify Odyssey home">
+            <img src="assets/odyssey-mark.svg" alt="" class="brand-mark">
+            <span><strong>Spotify</strong> Odyssey</span>
+        </a>
+        <div id="connection-status" class="status-badge checking" role="status" aria-live="polite">
+            Checking data source
+        </div>
         <hr>
-        <div class="filter-section">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
-                <p class="filter-title" style="margin: 0;">Historical Year:</p>
+
+        <section class="filter-section" aria-labelledby="year-filter-title">
+            <div class="filter-heading">
+                <p id="year-filter-title" class="filter-title">Listening year</p>
                 <label class="custom-toggle">
                     <input type="checkbox" id="multi-select-toggle">
-                    <span class="toggle-slider"></span>
-                    <span class="toggle-text">Multi</span>
+                    <span class="toggle-slider" aria-hidden="true"></span>
+                    <span class="toggle-text">Multi-select</span>
                 </label>
             </div>
-            <div class="checkbox-group" id="year-filters">
-                <!-- Chips populated by JS -->
+            <div class="checkbox-group" id="year-filters"></div>
+        </section>
+
+        <section class="filter-section">
+            <label class="filter-title" for="top-n-slider">Ranking size</label>
+            <div class="range-row">
+                <input
+                    type="range"
+                    id="top-n-slider"
+                    min="5"
+                    max="50"
+                    step="5"
+                    value="10"
+                >
+                <output id="top-n-value" for="top-n-slider">10</output>
             </div>
-        </div>
-        
-        <div class="filter-section">
-            <p class="filter-title">Show Top List:</p>
-            <input type="range" id="top-n-slider" min="10" max="100" step="10" value="10" style="width:100%;">
-            <span id="top-n-value" style="color:#1DB954; font-weight: bold; margin-left:10px;">10</span>
-        </div>
+        </section>
+
+        <p class="privacy-note">
+            Portfolio mode uses synthetic sample data. Private Spotify activity is disabled by default.
+        </p>
     </aside>
 
-    <!-- Main Content -->
     <main class="main-content">
-        
-        <!-- KPI Metrics -->
-        <section class="kpi-grid">
-            <div class="kpi-card">
+        <header class="page-hero">
+            <p class="eyebrow">Personal audio intelligence</p>
+            <h1>Your listening, decoded.</h1>
+            <p>
+                Explore when you listen, what stays in rotation, and how your musical habits evolve.
+            </p>
+        </header>
+
+        <div id="mode-banner" class="mode-banner hidden" role="status" aria-live="polite">
+            <div>
+                <strong>Portfolio demo mode</strong>
+                <span>The private API is unavailable, so this page is showing synthetic sample data.</span>
+            </div>
+        </div>
+
+        <div id="app-error" class="error-banner hidden" role="alert">
+            <strong>We could not load the dashboard.</strong>
+            <span id="app-error-message">Please try again.</span>
+            <button type="button" id="retry-button">Retry</button>
+        </div>
+
+        <section class="kpi-grid" aria-label="Listening summary">
+            <article class="kpi-card">
                 <div class="kpi-label">Airtime</div>
                 <div class="kpi-value kpi-loading" id="kpi-airtime">&nbsp;</div>
-            </div>
-            <div class="kpi-card">
-                <div class="kpi-label">Total Tracks</div>
+            </article>
+            <article class="kpi-card">
+                <div class="kpi-label">Unique tracks</div>
                 <div class="kpi-value kpi-loading" id="kpi-tracks">&nbsp;</div>
-            </div>
-            <div class="kpi-card">
-                <div class="kpi-label">Total Artists</div>
+            </article>
+            <article class="kpi-card">
+                <div class="kpi-label">Artists</div>
                 <div class="kpi-value kpi-loading" id="kpi-artists">&nbsp;</div>
-            </div>
-            <div class="kpi-card">
-                <div class="kpi-label">Avg Streams/Day</div>
+            </article>
+            <article class="kpi-card">
+                <div class="kpi-label">Streams / active day</div>
                 <div class="kpi-value kpi-loading" id="kpi-avg-streams">&nbsp;</div>
-            </div>
-            <div class="kpi-card">
-                <div class="kpi-label">Avg Minutes/Day</div>
+            </article>
+            <article class="kpi-card">
+                <div class="kpi-label">Minutes / active day</div>
                 <div class="kpi-value kpi-loading" id="kpi-avg-min">&nbsp;</div>
-            </div>
+            </article>
         </section>
 
-        <!-- Listening Clocks -->
-        <div class="section-header">⏱️ Listening Clocks</div>
-        <section class="charts-grid-2">
-            <div class="chart-container">
+        <h2 class="section-header">Listening clocks</h2>
+        <section class="charts-grid-2" aria-label="Hourly listening distribution">
+            <article class="chart-container">
                 <div class="chart-overlay" id="overlay-clock-streams"><div class="chart-spin"></div></div>
-                <canvas id="clock-streams"></canvas>
-            </div>
-            <div class="chart-container">
+                <canvas
+                    id="clock-streams"
+                    role="img"
+                    aria-label="Polar chart of streams by hour"
+                ></canvas>
+            </article>
+            <article class="chart-container">
                 <div class="chart-overlay" id="overlay-clock-minutes"><div class="chart-spin"></div></div>
-                <canvas id="clock-minutes"></canvas>
-            </div>
+                <canvas
+                    id="clock-minutes"
+                    role="img"
+                    aria-label="Polar chart of minutes listened by hour"
+                ></canvas>
+            </article>
         </section>
 
-        <!-- Time Analytics -->
-        <div class="section-header">📈 Time Analytics</div>
+        <h2 class="section-header">Time analytics</h2>
         <section class="chart-full">
-            <div class="chart-container">
+            <article class="chart-container">
                 <div class="chart-overlay" id="overlay-daily"><div class="chart-spin"></div></div>
-                <canvas id="trend-daily"></canvas>
-            </div>
+                <canvas
+                    id="trend-daily"
+                    role="img"
+                    aria-label="Line chart of daily listening activity"
+                ></canvas>
+            </article>
         </section>
         <section class="charts-grid-2">
-            <div class="chart-container">
+            <article class="chart-container">
                 <div class="chart-overlay" id="overlay-dow"><div class="chart-spin"></div></div>
-                <canvas id="trend-dow"></canvas>
-            </div>
-            <div class="chart-container">
+                <canvas
+                    id="trend-dow"
+                    role="img"
+                    aria-label="Bar chart of listening by day of week"
+                ></canvas>
+            </article>
+            <article class="chart-container">
                 <div class="chart-overlay" id="overlay-monthly"><div class="chart-spin"></div></div>
-                <canvas id="trend-monthly"></canvas>
-            </div>
+                <canvas
+                    id="trend-monthly"
+                    role="img"
+                    aria-label="Interactive bar chart of listening by month"
+                ></canvas>
+            </article>
         </section>
 
-        <!-- Hall of Fame -->
-        <div class="section-header">🏆 Hall of Fame</div>
+        <h2 class="section-header">Hall of fame</h2>
         <section class="charts-grid-3">
-            <div class="hof-column">
-                <h3>Top Artists</h3>
+            <article class="hof-column">
+                <h3>Top artists</h3>
                 <div class="column-wrapper" id="hof-artists"></div>
-            </div>
-            <div class="hof-column">
-                <h3>Top Albums</h3>
+            </article>
+            <article class="hof-column">
+                <h3>Top albums</h3>
                 <div class="column-wrapper" id="hof-albums"></div>
-            </div>
-            <div class="hof-column">
-                <h3>Top Songs</h3>
+            </article>
+            <article class="hof-column">
+                <h3>Top tracks</h3>
                 <div class="column-wrapper" id="hof-songs"></div>
-            </div>
+            </article>
         </section>
-        
-        <!-- Live Recently Played -->
-        <div class="section-header">📡 Live Pulse: Recently Played</div>
-        <section class="table-container">
+
+        <h2 class="section-header">Live pulse</h2>
+        <section class="table-container" aria-label="Recently played tracks">
             <div class="table-scroll-wrapper">
                 <table id="recent-table">
                     <thead>
                         <tr>
-                            <th style="width: 55px;">Cover</th>
-                            <th style="width: 120px;">Time</th>
-                            <th>Track Title</th>
-                            <th style="width: 130px;">Artist</th>
+                            <th scope="col">Cover</th>
+                            <th scope="col">Time</th>
+                            <th scope="col">Track</th>
+                            <th scope="col">Artist</th>
                         </tr>
                     </thead>
-                    <tbody id="recent-tbody">
-                        <tr><td colspan="4" style="text-align:center; color:#475569; padding: 30px;">📡 Loading recently played tracks...</td></tr>
+                    <tbody id="recent-tbody" aria-live="polite">
+                        <tr>
+                            <td colspan="4" class="table-message">Checking private live data…</td>
+                        </tr>
                     </tbody>
                 </table>
             </div>
         </section>
-        
-        <!-- Padding at bottom for Now Playing Bar -->
-        <div style="height: 100px;"></div>
+
+        <div class="bottom-spacer"></div>
     </main>
 
-    <!-- Now Playing Bar (Fixed Bottom) -->
-    <div id="np-container"></div>
-
-    <!-- Toast container -->
-    <div id="toast-container"></div>
-
-    <script src="app.js"></script>
+    <div id="np-container" aria-live="polite"></div>
+    <div id="toast-container" aria-live="polite"></div>
 </body>
 </html>

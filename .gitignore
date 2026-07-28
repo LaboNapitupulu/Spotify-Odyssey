@@ -8,6 +8,8 @@
 
 # Menyembunyikan file environment variables 
 .env
+.env.*
+!.env.example
 
 # 2. DATA PRIVASI PRIBADI
 # Menyembunyikan folder data mentah (JSON riwayat asli dari Spotify)
@@ -35,3 +37,14 @@ env/
 Thumbs.db
 # Menyembunyikan database SQLite (Privasi)
 data_processed/
+
+# Menyembunyikan seluruh ekspor histori, termasuk arsip lama
+archive/*.csv
+*.db
+*.sqlite
+*.sqlite3
+
+# Cache tooling
+.pytest_cache/
+.ruff_cache/
+.uv-cache/

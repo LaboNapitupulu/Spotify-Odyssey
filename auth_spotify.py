@@ -1,34 +1,56 @@
+"""Authorize the project owner's Spotify account from a trusted local machine."""
+
 import os
-import toml
+
 import spotipy
+import toml
 from spotipy.oauth2 import SpotifyOAuth
-from backend.database import PostgresCacheHandler
 
-secrets_path = os.path.join(".streamlit", "secrets.toml")
-secrets = toml.load(secrets_path)
-client_id = secrets["spotify"]["client_id"]
-client_secret = secrets["spotify"]["client_secret"]
-redirect_uri = secrets["spotify"]["redirect_uri"]
+from backend import database
 
-print("=========================================================")
-print("Meminta otorisasi Spotify untuk fitur Live Pulse...")
-print("Silakan ikuti instruksi di bawah ini:")
-print("1. Halaman web browser akan otomatis terbuka (jika tidak, klik link yang muncul).")
-print("2. Login ke Spotify dan izinkan akses aplikasi.")
-print("3. Anda akan diarahkan ke URL error 'http://127.0.0.1:8080/?code=...'.")
-print("4. COPY seluruh URL tersebut dan PASTE ke terminal ini, lalu tekan Enter.")
-print("=========================================================")
 
-auth_manager = SpotifyOAuth(
-    client_id=client_id, 
-    client_secret=client_secret, 
-    redirect_uri=redirect_uri, 
-    scope='user-read-recently-played user-read-currently-playing user-read-playback-state',
-    cache_handler=PostgresCacheHandler(),
-    open_browser=True
-)
+def load_credentials() -> tuple[str, str, str]:
+    try:
+        secrets = toml.load(os.path.join(".streamlit", "secrets.toml"))["spotify"]
+        client_id = secrets["client_id"]
+        client_secret = secrets["client_secret"]
+        redirect_uri = secrets["redirect_uri"]
+    except (FileNotFoundError, KeyError, TypeError, toml.TomlDecodeError):
+        client_id = os.environ.get("SPOTIFY_CLIENT_ID")
+        client_secret = os.environ.get("SPOTIFY_CLIENT_SECRET")
+        redirect_uri = os.environ.get(
+            "SPOTIFY_REDIRECT_URI",
+            "http://127.0.0.1:8080/",
+        )
 
-sp = spotipy.Spotify(auth_manager=auth_manager)
-sp.current_user_playing_track()
-print("\n[+] Berhasil! Token baru dengan scope lengkap telah tersimpan di Database Supabase Anda.")
-print("[+] Anda bisa menjalankan kembali server backend.")
+    if not client_id or not client_secret:
+        raise RuntimeError("Spotify credentials are not configured.")
+    return client_id, client_secret, redirect_uri
+
+
+def main() -> None:
+    client_id, client_secret, redirect_uri = load_credentials()
+    database.init_db()
+
+    print("Authorize Spotify in the browser using your project-owner account.")
+    print("The resulting refresh token is stored in PostgreSQL, not in the repository.")
+
+    auth_manager = SpotifyOAuth(
+        client_id=client_id,
+        client_secret=client_secret,
+        redirect_uri=redirect_uri,
+        scope=(
+            "user-read-recently-played "
+            "user-read-currently-playing "
+            "user-read-playback-state"
+        ),
+        cache_handler=database.PostgresCacheHandler(),
+        open_browser=True,
+    )
+    spotify = spotipy.Spotify(auth_manager=auth_manager)
+    spotify.current_user_playing_track()
+    print("Spotify authorization completed.")
+
+
+if __name__ == "__main__":
+    main()

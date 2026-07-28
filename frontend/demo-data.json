@@ -1,0 +1,125 @@
+{
+  "years": [2022, 2023, 2024],
+  "kpi": {
+    "airtime_hours": 1842.7,
+    "total_tracks": 3846,
+    "total_artists": 1268,
+    "active_days": 912,
+    "avg_streams_per_day": 31.4,
+    "avg_min_per_day": 121.2
+  },
+  "clock": [
+    {"hour": 0, "streams": 498, "minutes": 1912},
+    {"hour": 1, "streams": 342, "minutes": 1328},
+    {"hour": 2, "streams": 218, "minutes": 846},
+    {"hour": 3, "streams": 101, "minutes": 384},
+    {"hour": 4, "streams": 72, "minutes": 263},
+    {"hour": 5, "streams": 94, "minutes": 348},
+    {"hour": 6, "streams": 307, "minutes": 1147},
+    {"hour": 7, "streams": 711, "minutes": 2591},
+    {"hour": 8, "streams": 958, "minutes": 3494},
+    {"hour": 9, "streams": 1104, "minutes": 4012},
+    {"hour": 10, "streams": 1267, "minutes": 4598},
+    {"hour": 11, "streams": 1390, "minutes": 5031},
+    {"hour": 12, "streams": 1482, "minutes": 5410},
+    {"hour": 13, "streams": 1544, "minutes": 5638},
+    {"hour": 14, "streams": 1618, "minutes": 5881},
+    {"hour": 15, "streams": 1702, "minutes": 6204},
+    {"hour": 16, "streams": 1863, "minutes": 6822},
+    {"hour": 17, "streams": 2018, "minutes": 7415},
+    {"hour": 18, "streams": 2244, "minutes": 8251},
+    {"hour": 19, "streams": 2381, "minutes": 8794},
+    {"hour": 20, "streams": 2516, "minutes": 9272},
+    {"hour": 21, "streams": 2272, "minutes": 8376},
+    {"hour": 22, "streams": 1694, "minutes": 6249},
+    {"hour": 23, "streams": 1032, "minutes": 3841}
+  ],
+  "trends": {
+    "daily": [
+      {"date": "2024-06-01", "streams": 28},
+      {"date": "2024-06-02", "streams": 35},
+      {"date": "2024-06-03", "streams": 22},
+      {"date": "2024-06-04", "streams": 41},
+      {"date": "2024-06-05", "streams": 38},
+      {"date": "2024-06-06", "streams": 45},
+      {"date": "2024-06-07", "streams": 31},
+      {"date": "2024-06-08", "streams": 47},
+      {"date": "2024-06-09", "streams": 39},
+      {"date": "2024-06-10", "streams": 52},
+      {"date": "2024-06-11", "streams": 43},
+      {"date": "2024-06-12", "streams": 49},
+      {"date": "2024-06-13", "streams": 36},
+      {"date": "2024-06-14", "streams": 55}
+    ],
+    "dow": [
+      {"day": "Monday", "streams": 3924},
+      {"day": "Tuesday", "streams": 4078},
+      {"day": "Wednesday", "streams": 4217},
+      {"day": "Thursday", "streams": 4388},
+      {"day": "Friday", "streams": 5126},
+      {"day": "Saturday", "streams": 4972},
+      {"day": "Sunday", "streams": 3881}
+    ],
+    "monthly": [
+      {"month_id": 1, "month": "Jan", "streams": 2240},
+      {"month_id": 2, "month": "Feb", "streams": 2187},
+      {"month_id": 3, "month": "Mar", "streams": 2401},
+      {"month_id": 4, "month": "Apr", "streams": 2318},
+      {"month_id": 5, "month": "May", "streams": 2492},
+      {"month_id": 6, "month": "Jun", "streams": 2571},
+      {"month_id": 7, "month": "Jul", "streams": 2716},
+      {"month_id": 8, "month": "Aug", "streams": 2634},
+      {"month_id": 9, "month": "Sep", "streams": 2443},
+      {"month_id": 10, "month": "Oct", "streams": 2529},
+      {"month_id": 11, "month": "Nov", "streams": 2358},
+      {"month_id": 12, "month": "Dec", "streams": 2697}
+    ]
+  },
+  "fame": {
+    "artists": [
+      {"artist_name": "Neon Harbor", "minutes": 14820, "image_url": ""},
+      {"artist_name": "Paper Satellites", "minutes": 13210, "image_url": ""},
+      {"artist_name": "The Midnight Archive", "minutes": 11842, "image_url": ""},
+      {"artist_name": "Luma Fields", "minutes": 10448, "image_url": ""},
+      {"artist_name": "Northbound", "minutes": 9217, "image_url": ""},
+      {"artist_name": "Violet Hours", "minutes": 8742, "image_url": ""},
+      {"artist_name": "Soft Static", "minutes": 7934, "image_url": ""},
+      {"artist_name": "Common Weather", "minutes": 7211, "image_url": ""},
+      {"artist_name": "Atlas Motel", "minutes": 6840, "image_url": ""},
+      {"artist_name": "Afterimage Club", "minutes": 6312, "image_url": ""}
+    ],
+    "albums": [
+      {"album_name": "Night Transit", "artist_name": "Neon Harbor", "minutes": 7284, "image_url": ""},
+      {"album_name": "Signals in Bloom", "artist_name": "Paper Satellites", "minutes": 6742, "image_url": ""},
+      {"album_name": "Memory District", "artist_name": "The Midnight Archive", "minutes": 6198, "image_url": ""},
+      {"album_name": "Soft Geometry", "artist_name": "Luma Fields", "minutes": 5681, "image_url": ""},
+      {"album_name": "Windows Down", "artist_name": "Northbound", "minutes": 5127, "image_url": ""},
+      {"album_name": "Still Awake", "artist_name": "Violet Hours", "minutes": 4822, "image_url": ""},
+      {"album_name": "Quiet Machines", "artist_name": "Soft Static", "minutes": 4509, "image_url": ""},
+      {"album_name": "Forecast", "artist_name": "Common Weather", "minutes": 4187, "image_url": ""},
+      {"album_name": "Vacancy Lights", "artist_name": "Atlas Motel", "minutes": 3970, "image_url": ""},
+      {"album_name": "Long Exposure", "artist_name": "Afterimage Club", "minutes": 3648, "image_url": ""}
+    ],
+    "songs": [
+      {"track_name": "Last Train Home", "artist_name": "Neon Harbor", "minutes": 1812, "image_url": ""},
+      {"track_name": "Orbiting Slowly", "artist_name": "Paper Satellites", "minutes": 1644, "image_url": ""},
+      {"track_name": "Streetlights Remember", "artist_name": "The Midnight Archive", "minutes": 1517, "image_url": ""},
+      {"track_name": "Parallel Lines", "artist_name": "Luma Fields", "minutes": 1438, "image_url": ""},
+      {"track_name": "Coastline Radio", "artist_name": "Northbound", "minutes": 1362, "image_url": ""},
+      {"track_name": "Two AM Again", "artist_name": "Violet Hours", "minutes": 1291, "image_url": ""},
+      {"track_name": "Low Battery", "artist_name": "Soft Static", "minutes": 1218, "image_url": ""},
+      {"track_name": "Rain on Glass", "artist_name": "Common Weather", "minutes": 1177, "image_url": ""},
+      {"track_name": "Room 204", "artist_name": "Atlas Motel", "minutes": 1094, "image_url": ""},
+      {"track_name": "Polaroid Sky", "artist_name": "Afterimage Club", "minutes": 1036, "image_url": ""}
+    ]
+  },
+  "recently_played": {
+    "items": [
+      {"played_at": "2024-06-14T20:42:00Z", "track_name": "Last Train Home", "artist_name": "Neon Harbor", "image_url": ""},
+      {"played_at": "2024-06-14T20:37:00Z", "track_name": "Orbiting Slowly", "artist_name": "Paper Satellites", "image_url": ""},
+      {"played_at": "2024-06-14T20:31:00Z", "track_name": "Streetlights Remember", "artist_name": "The Midnight Archive", "image_url": ""},
+      {"played_at": "2024-06-14T20:27:00Z", "track_name": "Parallel Lines", "artist_name": "Luma Fields", "image_url": ""},
+      {"played_at": "2024-06-14T20:22:00Z", "track_name": "Coastline Radio", "artist_name": "Northbound", "image_url": ""}
+    ]
+  }
+}
