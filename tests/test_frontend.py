@@ -33,5 +33,7 @@ def test_personal_mode_is_default_and_uses_spotify_green():
     app_js = (ROOT / "frontend" / "app.js").read_text("utf-8").lower()
 
     assert "demofallback: false" in config_js
+    assert "liveenabled: true" in config_js
     assert "#1ed760" in styles_css
     assert "#1ed760" in app_js
+    assert "/stats/recent" in app_js

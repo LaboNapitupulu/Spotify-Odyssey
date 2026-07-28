@@ -828,16 +828,14 @@ tbody tr:hover {
     animation: spin 800ms linear infinite;
 }
 
-.skeleton,
-.kpi-loading {
+.skeleton {
     position: relative;
     overflow: hidden;
     color: transparent !important;
     background: var(--surface) !important;
 }
 
-.skeleton::after,
-.kpi-loading::after {
+.skeleton::after {
     position: absolute;
     inset: 0;
     content: "";
@@ -854,7 +852,16 @@ tbody tr:hover {
 
 .kpi-loading {
     min-height: 28px;
-    border-radius: 7px;
+    color: var(--muted) !important;
+    background: transparent !important;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    animation: pulse 1.2s ease-in-out infinite;
+}
+
+.kpi-card:first-child .kpi-loading {
+    color: rgba(8, 11, 18, 0.58) !important;
 }
 
 #toast-container {

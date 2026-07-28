@@ -7,6 +7,7 @@ Spotify Odyssey is a privacy-conscious personal listening analytics dashboard. I
 - Interactive year, month, and ranking-size filters
 - Daily, weekday, monthly, and hourly listening analysis
 - Top artist, album, and track rankings
+- Latest imported tracks with a database fallback when Spotify is unavailable
 - PostgreSQL-backed import and artwork cache
 - Optional owner-only now-playing and recently-played features
 - Optional synthetic preview that is only shown when the visitor explicitly selects it
@@ -39,7 +40,8 @@ The repository contains no personal listening export, database, OAuth token, or 
 - Personal deployments show a clear connection error when the analytics API is unavailable.
 - Synthetic data is never substituted for personal data automatically.
 - Live Spotify endpoints are disabled unless `ENABLE_LIVE_SPOTIFY=true`.
-- A `PRIVATE_API_KEY` is required for live endpoints outside localhost.
+- Read-only live activity can be made public with `PUBLIC_LIVE_SPOTIFY_READS=true`.
+- A `PRIVATE_API_KEY` remains required for synchronization outside localhost.
 - `/api/sync` is a protected `POST` endpoint.
 
 The bundled demo dataset is synthetic and does not represent a real Spotify account.
@@ -113,7 +115,17 @@ Enable live endpoints locally:
 ENABLE_LIVE_SPOTIFY=true
 ```
 
-For any non-local deployment, also configure a long random value:
+To show now-playing and Spotify's recently-played list on a public dashboard:
+
+```env
+PUBLIC_LIVE_SPOTIFY_READS=true
+```
+
+This intentionally makes those two read-only endpoints visible to dashboard
+visitors. If the Spotify API or OAuth token is unavailable, the recent-tracks
+table falls back to the latest rows already stored in PostgreSQL.
+
+For synchronization on any non-local deployment, configure a long random value:
 
 ```env
 PRIVATE_API_KEY=replace_with_a_long_random_value
@@ -127,7 +139,8 @@ curl -X POST \
   https://your-domain.example/api/sync
 ```
 
-Do not embed `PRIVATE_API_KEY` in public frontend code.
+Do not embed `PRIVATE_API_KEY` in public frontend code. It protects write access
+to `/api/sync`; it is not needed by the public read-only Live Pulse.
 
 ## Personal dashboard deployment
 
@@ -137,7 +150,9 @@ Deploy the complete project when you want to see your own listening statistics:
 2. Add `DATABASE_URL` as a secret environment variable in the hosting platform.
 3. Apply it to the Production environment and redeploy.
 4. Open `/api/health` and confirm that `database_ready` is `true`.
-5. Keep `liveEnabled: false` unless private Spotify OAuth is also configured.
+5. Run `python auth_spotify.py` once locally so the refresh token is stored in PostgreSQL.
+6. Set `ENABLE_LIVE_SPOTIFY=true` and `PUBLIC_LIVE_SPOTIFY_READS=true` when the
+   public Live Pulse is intentional.
 
 Vercel serves both the static frontend and FastAPI adapter using `vercel.json`.
 Without a database connection variable, the dashboard displays a configuration
@@ -163,9 +178,10 @@ docker run --rm -p 7860:7860 --env-file .env spotify-odyssey
 | `GET` | `/api/stats/clock` | Public aggregate |
 | `GET` | `/api/stats/trends` | Public aggregate |
 | `GET` | `/api/stats/fame` | Public aggregate |
+| `GET` | `/api/stats/recent` | Public latest-history fallback |
 | `GET` | `/api/spotify/artwork` | Public, validated |
-| `GET` | `/api/spotify/now-playing` | Private |
-| `GET` | `/api/spotify/recently-played` | Private |
+| `GET` | `/api/spotify/now-playing` | Public only when explicitly enabled |
+| `GET` | `/api/spotify/recently-played` | Public only when explicitly enabled |
 | `POST` | `/api/sync` | Private |
 
 Only deploy the aggregate endpoints with a database you are comfortable presenting publicly. Use the synthetic static mode when the original listening history must remain private.

@@ -78,3 +78,41 @@ def test_database_url_accepts_vercel_postgres_alias(monkeypatch):
     )
 
     assert database.get_db_url().startswith("postgresql://")
+
+
+def test_recent_history_endpoint_uses_database_fallback(monkeypatch):
+    monkeypatch.setattr(main.database, "init_db", lambda: None)
+    monkeypatch.setattr(main.database, "close_pool", lambda: None)
+    monkeypatch.setattr(main, "_load_spotify_credentials", lambda: (None, None, ""))
+    monkeypatch.setattr(
+        main.database,
+        "get_recent_history",
+        lambda limit: [{"track_name": "Latest track", "limit": limit}],
+    )
+
+    with TestClient(main.app) as client:
+        response = client.get("/api/stats/recent?limit=7")
+
+    assert response.status_code == 200
+    assert response.json()["items"] == [{"track_name": "Latest track", "limit": 7}]
+
+
+def test_public_live_reads_do_not_expose_sync(monkeypatch):
+    class SpotifyStub:
+        def current_user_playing_track(self):
+            return {"is_playing": False}
+
+    monkeypatch.setattr(main, "LIVE_SPOTIFY_ENABLED", True)
+    monkeypatch.setattr(main, "PUBLIC_LIVE_SPOTIFY_READS", True)
+    monkeypatch.setattr(main.database, "init_db", lambda: None)
+    monkeypatch.setattr(main.database, "close_pool", lambda: None)
+    monkeypatch.setattr(main, "_load_spotify_credentials", lambda: (None, None, ""))
+
+    with TestClient(main.app) as client:
+        client.app.state.spotify_user = SpotifyStub()
+        now_playing = client.get("/api/spotify/now-playing")
+        sync = client.post("/api/sync")
+
+    assert now_playing.status_code == 200
+    assert now_playing.json() == {"is_playing": False}
+    assert sync.status_code == 503

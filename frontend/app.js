@@ -2,10 +2,10 @@ const CONFIG = window.SPOTIFY_ODYSSEY_CONFIG || {
     apiBase: "/api",
     demoFallback: false,
     allowDemoPreview: true,
-    liveEnabled: false,
+    liveEnabled: true,
 };
 const API_BASE = CONFIG.apiBase;
-const PLACEHOLDER_ART = "assets/music-placeholder.svg";
+const PLACEHOLDER_ART = "assets/music-placeholder.svg?v=20260728-3";
 const SPOTIFY_GREEN = "#1ed760";
 const SPOTIFY_GREEN_SOFT = "rgba(30, 215, 96, 0.14)";
 
@@ -175,9 +175,6 @@ function showToast(message) {
 async function init() {
     setupEventListeners();
     setConnectionState("checking");
-    if (!CONFIG.liveEnabled) {
-        renderLiveUnavailable();
-    }
 
     try {
         await fetchYears();
@@ -187,11 +184,13 @@ async function init() {
         showError(dataErrorMessage(error));
     }
 
-    if (CONFIG.liveEnabled && !isDemoMode) {
-        await fetchNowPlaying();
+    if (!isDemoMode) {
         await fetchRecentlyPlayed();
-        window.setInterval(fetchNowPlaying, 30000);
         window.setInterval(fetchRecentlyPlayed, 60000);
+        if (CONFIG.liveEnabled) {
+            await fetchNowPlaying();
+            window.setInterval(fetchNowPlaying, 30000);
+        }
     } else {
         renderLiveUnavailable();
     }
@@ -261,7 +260,7 @@ function markDashboardLoading() {
         "kpi-avg-min",
     ].forEach((id) => {
         const element = document.getElementById(id);
-        element.textContent = "\u00a0";
+        element.textContent = "Loading\u2026";
         element.classList.add("kpi-loading");
     });
 }
@@ -783,10 +782,21 @@ function renderRecentlyPlayed(items) {
 }
 
 async function fetchRecentlyPlayed() {
+    let data = null;
+    if (CONFIG.liveEnabled) {
+        try {
+            data = await requestJSON(
+                `${API_BASE}/spotify/recently-played?limit=10`,
+            );
+        } catch {
+            data = null;
+        }
+    }
+
     try {
-        const data = await requestJSON(
-            `${API_BASE}/spotify/recently-played?limit=10`,
-        );
+        if (!data?.items?.length) {
+            data = await requestJSON(`${API_BASE}/stats/recent?limit=10`);
+        }
         if (data.items?.[0]?.played_at === lastPlayedAt) return;
         lastPlayedAt = data.items?.[0]?.played_at || null;
         renderRecentlyPlayed(data.items);
@@ -807,7 +817,7 @@ function renderLiveUnavailable() {
     cell.colSpan = 4;
     cell.className = "table-message";
     cell.textContent =
-        "Private live activity is disabled. Historical analytics above still use your connected database.";
+        "Recent listening is temporarily unavailable. Historical analytics above are still connected.";
     row.appendChild(cell);
     body.appendChild(row);
 }

@@ -451,6 +451,39 @@ def get_available_years() -> list:
         return [row["year"] for row in cursor.fetchall()]
 
 
+def get_recent_history(limit: int = 10) -> list:
+    """Return the newest imported listening events as a resilient live fallback."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT
+                history.timestamp,
+                history.track_name,
+                history.artist_name,
+                COALESCE(artwork.image_url, '') AS image_url
+            FROM listening_history AS history
+            LEFT JOIN artwork_cache AS artwork
+              ON artwork.cache_key = (
+                  'track_' || history.track_name || '_' || history.artist_name
+              )
+            ORDER BY history.timestamp DESC
+            LIMIT %s
+            """,
+            (limit,),
+        )
+        return [
+            {
+                "played_at": row["timestamp"].isoformat(),
+                "track_name": row["track_name"],
+                "artist_name": row["artist_name"],
+                "image_url": row["image_url"],
+                "source": "history",
+            }
+            for row in cursor.fetchall()
+        ]
+
+
 class PostgresCacheHandler(spotipy.CacheHandler):
     def __init__(self, username: str = "default") -> None:
         self.username = username

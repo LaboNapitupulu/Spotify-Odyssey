@@ -31,6 +31,10 @@ LIVE_SPOTIFY_ENABLED = os.environ.get("ENABLE_LIVE_SPOTIFY", "false").lower() in
     "true",
     "yes",
 }
+PUBLIC_LIVE_SPOTIFY_READS = os.environ.get(
+    "PUBLIC_LIVE_SPOTIFY_READS",
+    "false",
+).lower() in {"1", "true", "yes"}
 
 
 def _load_spotify_credentials() -> tuple[Optional[str], Optional[str], str]:
@@ -197,6 +201,20 @@ def require_private_spotify(
         )
 
 
+def require_live_spotify_read(
+    request: Request,
+    x_api_key: Annotated[Optional[str], Header()] = None,
+) -> None:
+    if PUBLIC_LIVE_SPOTIFY_READS:
+        if not LIVE_SPOTIFY_ENABLED:
+            raise HTTPException(
+                status_code=404,
+                detail="Live Spotify features are disabled.",
+            )
+        return
+    require_private_spotify(request, x_api_key)
+
+
 @app.get("/api/health")
 def health(request: Request):
     return {
@@ -204,6 +222,8 @@ def health(request: Request):
         "database_ready": request.app.state.database_ready,
         "database_issue": request.app.state.database_issue,
         "live_spotify_enabled": LIVE_SPOTIFY_ENABLED,
+        "public_live_spotify_reads": PUBLIC_LIVE_SPOTIFY_READS,
+        "spotify_user_ready": request.app.state.spotify_user is not None,
         "spotify_public_ready": request.app.state.spotify_public is not None,
     }
 
@@ -248,6 +268,13 @@ def api_get_fame(
         for item in data[category]:
             item["image_url"] = ""
     return data
+
+
+@app.get("/api/stats/recent", dependencies=[Depends(require_database)])
+def api_get_recent_history(
+    limit: Annotated[int, Query(ge=1, le=50)] = 10,
+):
+    return {"items": database.get_recent_history(limit)}
 
 
 def clean_query(text: str) -> str:
@@ -317,7 +344,7 @@ def api_get_artwork(
 
 @app.get(
     "/api/spotify/now-playing",
-    dependencies=[Depends(require_private_spotify)],
+    dependencies=[Depends(require_live_spotify_read)],
 )
 def api_now_playing(request: Request):
     spotify_user = request.app.state.spotify_user
@@ -347,7 +374,7 @@ def api_now_playing(request: Request):
 
 @app.get(
     "/api/spotify/recently-played",
-    dependencies=[Depends(require_private_spotify)],
+    dependencies=[Depends(require_live_spotify_read)],
 )
 def api_recently_played(
     request: Request,

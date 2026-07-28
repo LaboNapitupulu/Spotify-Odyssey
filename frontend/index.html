@@ -9,19 +9,19 @@
         content="Spotify Odyssey turns listening history into a privacy-conscious, interactive analytics story."
     >
     <title>Spotify Odyssey — Personal Listening Analytics</title>
-    <link rel="icon" type="image/svg+xml" href="assets/odyssey-mark.svg">
+    <link rel="icon" type="image/svg+xml" href="assets/odyssey-mark.svg?v=20260728-3">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
         href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
         rel="stylesheet"
     >
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="styles.css?v=20260728-3">
     <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
-    <script defer src="config.js"></script>
-    <script defer src="app.js"></script>
+    <script defer src="config.js?v=20260728-3"></script>
+    <script defer src="app.js?v=20260728-3"></script>
 </head>
 <body>
     <div id="sidebar-overlay" aria-hidden="true"></div>
@@ -38,7 +38,7 @@
 
     <aside class="sidebar" id="filter-sidebar" aria-label="Dashboard filters">
         <a class="brand-lockup" href="/" aria-label="Spotify Odyssey home">
-            <img src="assets/odyssey-mark.svg" alt="" class="brand-mark">
+            <img src="assets/odyssey-mark.svg?v=20260728-3" alt="" class="brand-mark">
             <span><strong>Spotify</strong> Odyssey</span>
         </a>
         <div id="connection-status" class="status-badge checking" role="status" aria-live="polite">
@@ -106,23 +106,23 @@
         <section class="kpi-grid" aria-label="Listening summary">
             <article class="kpi-card">
                 <div class="kpi-label">Airtime</div>
-                <div class="kpi-value kpi-loading" id="kpi-airtime">&nbsp;</div>
+                <div class="kpi-value kpi-loading" id="kpi-airtime">Loading…</div>
             </article>
             <article class="kpi-card">
                 <div class="kpi-label">Unique tracks</div>
-                <div class="kpi-value kpi-loading" id="kpi-tracks">&nbsp;</div>
+                <div class="kpi-value kpi-loading" id="kpi-tracks">Loading…</div>
             </article>
             <article class="kpi-card">
                 <div class="kpi-label">Artists</div>
-                <div class="kpi-value kpi-loading" id="kpi-artists">&nbsp;</div>
+                <div class="kpi-value kpi-loading" id="kpi-artists">Loading…</div>
             </article>
             <article class="kpi-card">
                 <div class="kpi-label">Streams / active day</div>
-                <div class="kpi-value kpi-loading" id="kpi-avg-streams">&nbsp;</div>
+                <div class="kpi-value kpi-loading" id="kpi-avg-streams">Loading…</div>
             </article>
             <article class="kpi-card">
                 <div class="kpi-label">Minutes / active day</div>
-                <div class="kpi-value kpi-loading" id="kpi-avg-min">&nbsp;</div>
+                <div class="kpi-value kpi-loading" id="kpi-avg-min">Loading…</div>
             </article>
         </section>
 
@@ -206,7 +206,7 @@
                     </thead>
                     <tbody id="recent-tbody" aria-live="polite">
                         <tr>
-                            <td colspan="4" class="table-message">Checking private live data…</td>
+                            <td colspan="4" class="table-message">Loading recent listening…</td>
                         </tr>
                     </tbody>
                 </table>
