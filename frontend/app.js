@@ -5,7 +5,7 @@ const CONFIG = window.SPOTIFY_ODYSSEY_CONFIG || {
     liveEnabled: true,
 };
 const API_BASE = CONFIG.apiBase;
-const PLACEHOLDER_ART = "assets/music-placeholder.svg?v=20260728-3";
+const PLACEHOLDER_ART = "assets/music-placeholder.svg?v=20260729-1";
 const SPOTIFY_GREEN = "#1ed760";
 const SPOTIFY_GREEN_SOFT = "rgba(30, 215, 96, 0.14)";
 

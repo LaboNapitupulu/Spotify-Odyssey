@@ -37,3 +37,11 @@ def test_personal_mode_is_default_and_uses_spotify_green():
     assert "#1ed760" in styles_css
     assert "#1ed760" in app_js
     assert "/stats/recent" in app_js
+
+
+def test_decorative_animations_cannot_expand_the_page_width():
+    styles_css = (ROOT / "frontend" / "styles.css").read_text("utf-8")
+
+    assert "overflow-x: clip" in styles_css
+    assert ".chart-overlay.done::after" in styles_css
+    assert "translateX(20px)" not in styles_css
