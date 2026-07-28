@@ -64,13 +64,22 @@ class NonBlockingSpotifyOAuth(SpotifyOAuth):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     app.state.database_ready = False
+    app.state.database_issue = None
     app.state.spotify_user = None
     app.state.spotify_public = None
 
     try:
         database.init_db()
         app.state.database_ready = True
+    except RuntimeError as error:
+        app.state.database_issue = (
+            "not_configured"
+            if "connection URL is configured" in str(error)
+            else "connection_failed"
+        )
+        logger.exception("Database initialization failed.")
     except Exception:
+        app.state.database_issue = "connection_failed"
         logger.exception("Database initialization failed.")
 
     client_id, client_secret, redirect_uri = _load_spotify_credentials()
@@ -160,7 +169,11 @@ def parse_years(years: Optional[str]) -> Optional[list[int]]:
 
 def require_database(request: Request) -> None:
     if not request.app.state.database_ready:
-        raise HTTPException(status_code=503, detail="Analytics database is unavailable.")
+        if request.app.state.database_issue == "not_configured":
+            detail = "Analytics database is not configured on this deployment."
+        else:
+            detail = "Analytics database is temporarily unavailable."
+        raise HTTPException(status_code=503, detail=detail)
 
 
 def require_private_spotify(
@@ -189,6 +202,7 @@ def health(request: Request):
     return {
         "status": "ready" if request.app.state.database_ready else "degraded",
         "database_ready": request.app.state.database_ready,
+        "database_issue": request.app.state.database_issue,
         "live_spotify_enabled": LIVE_SPOTIFY_ENABLED,
         "spotify_public_ready": request.app.state.spotify_public is not None,
     }

@@ -16,23 +16,41 @@ logger = logging.getLogger(__name__)
 
 _pool: Optional[ThreadedConnectionPool] = None
 _pool_lock = threading.Lock()
+DATABASE_ENV_KEYS = (
+    "DATABASE_URL",
+    "POSTGRES_URL",
+    "POSTGRES_URL_NON_POOLING",
+    "SUPABASE_DB_URL",
+)
 
 
 def get_db_url() -> str:
     """Return a PostgreSQL connection string without exposing it in logs."""
+    url = next(
+        (
+            os.environ[key].strip()
+            for key in DATABASE_ENV_KEYS
+            if os.environ.get(key, "").strip()
+        ),
+        None,
+    )
     secrets_path = os.path.join(
         os.path.dirname(os.path.dirname(__file__)),
         ".streamlit",
         "secrets.toml",
     )
-    try:
-        secrets = toml.load(secrets_path)
-        url = secrets["database"]["url"]
-    except (FileNotFoundError, KeyError, TypeError, toml.TomlDecodeError):
-        url = os.environ.get("DATABASE_URL")
+    if not url:
+        try:
+            secrets = toml.load(secrets_path)
+            url = secrets["database"]["url"]
+        except (FileNotFoundError, KeyError, TypeError, toml.TomlDecodeError):
+            url = None
 
     if not url:
-        raise RuntimeError("DATABASE_URL is not configured.")
+        raise RuntimeError(
+            "No database connection URL is configured. "
+            f"Set one of: {', '.join(DATABASE_ENV_KEYS)}."
+        )
     if url.startswith("postgres://"):
         url = url.replace("postgres://", "postgresql://", 1)
     return url

@@ -74,7 +74,7 @@
         </section>
 
         <p class="privacy-note">
-            Portfolio mode uses synthetic sample data. Private Spotify activity is disabled by default.
+            Personal analytics load from your connected database. Private live activity remains disabled by default.
         </p>
     </aside>
 
@@ -90,14 +90,17 @@
         <div id="mode-banner" class="mode-banner hidden" role="status" aria-live="polite">
             <div>
                 <strong>Portfolio demo mode</strong>
-                <span>The private API is unavailable, so this page is showing synthetic sample data.</span>
+                <span>You chose to preview synthetic sample data instead of your personal database.</span>
             </div>
         </div>
 
         <div id="app-error" class="error-banner hidden" role="alert">
-            <strong>We could not load the dashboard.</strong>
+            <strong>We could not load your personal dashboard.</strong>
             <span id="app-error-message">Please try again.</span>
-            <button type="button" id="retry-button">Retry</button>
+            <div class="error-actions">
+                <button type="button" id="retry-button">Retry</button>
+                <button type="button" id="demo-button" class="secondary">View sample data</button>
+            </div>
         </div>
 
         <section class="kpi-grid" aria-label="Listening summary">

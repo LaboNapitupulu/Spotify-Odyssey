@@ -2,7 +2,7 @@ from fastapi import HTTPException
 from fastapi.testclient import TestClient
 import pytest
 
-from backend import main
+from backend import database, main
 
 
 def test_parse_years_normalizes_and_deduplicates():
@@ -62,3 +62,19 @@ def test_query_bounds_are_enforced(monkeypatch):
 
     assert invalid_month.status_code == 422
     assert excessive_ranking.status_code == 422
+
+
+def test_database_url_accepts_vercel_postgres_alias(monkeypatch):
+    for key in database.DATABASE_ENV_KEYS:
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv(
+        "POSTGRES_URL",
+        "postgres://example:secret@database.example:5432/spotify",
+    )
+    monkeypatch.setattr(
+        database.toml,
+        "load",
+        lambda _path: (_ for _ in ()).throw(FileNotFoundError()),
+    )
+
+    assert database.get_db_url().startswith("postgresql://")

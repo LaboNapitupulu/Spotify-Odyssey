@@ -2,5 +2,5 @@
   <title id="title">Music artwork placeholder</title>
   <rect width="128" height="128" rx="22" fill="#172033"/>
   <circle cx="64" cy="64" r="38" fill="#222d44"/>
-  <path d="M73 38v45a12 12 0 1 1-7-11V47l30-6v34a12 12 0 1 1-7-11V32z" fill="#d9ff57"/>
+  <path d="M73 38v45a12 12 0 1 1-7-11V47l30-6v34a12 12 0 1 1-7-11V32z" fill="#1ed760"/>
 </svg>

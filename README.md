@@ -9,7 +9,7 @@ Spotify Odyssey is a privacy-conscious personal listening analytics dashboard. I
 - Top artist, album, and track rankings
 - PostgreSQL-backed import and artwork cache
 - Optional owner-only now-playing and recently-played features
-- Synthetic portfolio demo mode when the private API is unavailable
+- Optional synthetic preview that is only shown when the visitor explicitly selects it
 - Responsive, accessible vanilla JavaScript interface
 
 ## Architecture
@@ -36,7 +36,8 @@ The repository contains no personal listening export, database, OAuth token, or 
 
 - `data_raw/`, `data_processed/`, `.streamlit/`, `.cache`, `.env*`, and exported CSV files are ignored.
 - Docker excludes those files independently through `.dockerignore`.
-- Public deployments use `frontend/demo-data.json` when the analytics API is unavailable.
+- Personal deployments show a clear connection error when the analytics API is unavailable.
+- Synthetic data is never substituted for personal data automatically.
 - Live Spotify endpoints are disabled unless `ENABLE_LIVE_SPOTIFY=true`.
 - A `PRIVATE_API_KEY` is required for live endpoints outside localhost.
 - `/api/sync` is a protected `POST` endpoint.
@@ -71,6 +72,10 @@ Required for analytics:
 ```env
 DATABASE_URL=postgresql://user:password@host:5432/database?sslmode=require
 ```
+
+The backend also recognizes `POSTGRES_URL`, `POSTGRES_URL_NON_POOLING`, and
+`SUPABASE_DB_URL`. This makes Vercel and Supabase integrations work without
+renaming their generated connection variable.
 
 Optional Spotify configuration:
 
@@ -124,16 +129,22 @@ curl -X POST \
 
 Do not embed `PRIVATE_API_KEY` in public frontend code.
 
-## Portfolio deployment
+## Personal dashboard deployment
 
-The safest public portfolio setup is static-only:
+Deploy the complete project when you want to see your own listening statistics:
 
-1. Deploy `frontend/` to a static host.
-2. Keep `liveEnabled: false` in `frontend/config.js`.
-3. The dashboard uses the synthetic demo dataset automatically.
-4. Link the repository and architecture documentation from your portfolio.
+1. Deploy the repository, not only `frontend/`.
+2. Add `DATABASE_URL` as a secret environment variable in the hosting platform.
+3. Apply it to the Production environment and redeploy.
+4. Open `/api/health` and confirm that `database_ready` is `true`.
+5. Keep `liveEnabled: false` unless private Spotify OAuth is also configured.
 
-Vercel can serve both the static frontend and FastAPI adapter using `vercel.json`. Without `DATABASE_URL`, the API reports a degraded health state and the frontend safely falls back to demo mode.
+Vercel serves both the static frontend and FastAPI adapter using `vercel.json`.
+Without a database connection variable, the dashboard displays a configuration
+message instead of silently replacing your statistics with sample numbers.
+Visitors can still select **View sample data** manually.
+
+Never commit the connection URL to GitHub or place it in `frontend/config.js`.
 
 The Docker image runs as a non-root user on port `7860`:
 

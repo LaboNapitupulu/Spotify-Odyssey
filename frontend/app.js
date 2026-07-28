@@ -1,10 +1,13 @@
 const CONFIG = window.SPOTIFY_ODYSSEY_CONFIG || {
     apiBase: "/api",
-    demoFallback: true,
+    demoFallback: false,
+    allowDemoPreview: true,
     liveEnabled: false,
 };
 const API_BASE = CONFIG.apiBase;
 const PLACEHOLDER_ART = "assets/music-placeholder.svg";
+const SPOTIFY_GREEN = "#1ed760";
+const SPOTIFY_GREEN_SOFT = "rgba(30, 215, 96, 0.14)";
 
 let selectedYears = [];
 let allAvailableYears = [];
@@ -87,7 +90,18 @@ async function requestJSON(url, options = {}) {
     });
     const contentType = response.headers.get("content-type") || "";
     if (!response.ok) {
-        throw new Error(`Request failed with status ${response.status}.`);
+        let detail = "";
+        if (contentType.includes("application/json")) {
+            const payload = await response.json().catch(() => ({}));
+            detail = typeof payload.detail === "string" ? payload.detail : "";
+        }
+        const error = new Error(
+            detail || `Request failed with status ${response.status}.`,
+        );
+        error.status = response.status;
+        error.isApiRouteMissing =
+            response.status === 404 && !contentType.includes("application/json");
+        throw error;
     }
     if (!contentType.includes("application/json")) {
         throw new Error("The server returned a non-JSON response.");
@@ -122,11 +136,31 @@ function setDemoMode(enabled) {
 function showError(message) {
     document.getElementById("app-error-message").textContent = message;
     document.getElementById("app-error").classList.remove("hidden");
+    document
+        .getElementById("demo-button")
+        .classList.toggle("hidden", !CONFIG.allowDemoPreview);
     setConnectionState("error");
 }
 
 function clearError() {
     document.getElementById("app-error").classList.add("hidden");
+}
+
+function dataErrorMessage(error) {
+    if (error?.status === 503) {
+        return (
+            "Your listening database is not connected to this deployment. " +
+            "Add DATABASE_URL (or POSTGRES_URL) in the hosting environment, " +
+            "redeploy, then select Retry."
+        );
+    }
+    if (error?.isApiRouteMissing || error?.message?.includes("non-JSON")) {
+        return (
+            "The analytics API is not being served by this deployment. " +
+            "Check the backend route configuration, then select Retry."
+        );
+    }
+    return error?.message || "Personal analytics data could not be loaded.";
 }
 
 function showToast(message) {
@@ -141,12 +175,16 @@ function showToast(message) {
 async function init() {
     setupEventListeners();
     setConnectionState("checking");
+    if (!CONFIG.liveEnabled) {
+        renderLiveUnavailable();
+    }
 
     try {
         await fetchYears();
         await updateDashboard();
     } catch (error) {
-        showError(error.message || "The dashboard could not be initialized.");
+        finishLoadingOverlays();
+        showError(dataErrorMessage(error));
     }
 
     if (CONFIG.liveEnabled && !isDemoMode) {
@@ -277,7 +315,7 @@ async function updateDashboard() {
         renderKpi(kpi);
         renderTrends(trends);
         renderClocks(clock);
-        await fetchFameWithArtwork(fame, signal, requestId);
+        void fetchFameWithArtwork(fame, signal, requestId);
     } catch (error) {
         if (error.name === "AbortError") return;
         if (CONFIG.demoFallback) {
@@ -287,7 +325,7 @@ async function updateDashboard() {
             return;
         }
         finishLoadingOverlays();
-        showError(error.message || "Analytics data could not be loaded.");
+        showError(dataErrorMessage(error));
     }
 }
 
@@ -322,7 +360,9 @@ function finishLoadingOverlays() {
 
 function renderTrends(data) {
     const monthlyColors = data.monthly.map((item) =>
-        !selectedMonth || item.month_id === selectedMonth ? "#d9ff57" : "#344054",
+        !selectedMonth || item.month_id === selectedMonth
+            ? SPOTIFY_GREEN
+            : "#344054",
     );
 
     if (charts.daily) {
@@ -337,8 +377,8 @@ function renderTrends(data) {
                 datasets: [{
                     label: "Streams",
                     data: data.daily.map((item) => item.streams),
-                    borderColor: "#d9ff57",
-                    backgroundColor: "rgba(217, 255, 87, 0.12)",
+                    borderColor: SPOTIFY_GREEN,
+                    backgroundColor: SPOTIFY_GREEN_SOFT,
                     fill: true,
                     tension: 0.35,
                     pointRadius: 0,
@@ -374,7 +414,7 @@ function renderTrends(data) {
                 labels: data.dow.map((item) => item.day.slice(0, 3)),
                 datasets: [{
                     data: data.dow.map((item) => item.streams),
-                    backgroundColor: "#d9ff57",
+                    backgroundColor: SPOTIFY_GREEN,
                     borderRadius: 7,
                 }],
             },
@@ -471,8 +511,8 @@ function renderClocks(data) {
                 labels,
                 datasets: [{
                     data: data.map((item) => item.streams),
-                    backgroundColor: "rgba(217, 255, 87, 0.52)",
-                    borderColor: "#d9ff57",
+                    backgroundColor: "rgba(30, 215, 96, 0.52)",
+                    borderColor: SPOTIFY_GREEN,
                     borderWidth: 1,
                 }],
             },
@@ -767,7 +807,7 @@ function renderLiveUnavailable() {
     cell.colSpan = 4;
     cell.className = "table-message";
     cell.textContent =
-        "Private live activity is disabled in the public portfolio deployment.";
+        "Private live activity is disabled. Historical analytics above still use your connected database.";
     row.appendChild(cell);
     body.appendChild(row);
 }
@@ -801,13 +841,25 @@ function setupEventListeners() {
     document.getElementById("retry-button").addEventListener("click", async () => {
         isDemoMode = false;
         demoData = null;
+        clearError();
         setConnectionState("checking");
         try {
             await fetchYears();
             await updateDashboard();
         } catch (error) {
-            showError(error.message || "Retry failed.");
+            finishLoadingOverlays();
+            showError(dataErrorMessage(error));
         }
+    });
+    document.getElementById("demo-button").addEventListener("click", async () => {
+        clearError();
+        const sample = await loadDemoData();
+        allAvailableYears = sample.years;
+        selectedYears = [...allAvailableYears];
+        setDemoMode(true);
+        renderYearFilters();
+        await updateDashboard();
+        renderLiveUnavailable();
     });
     document
         .getElementById("sidebar-overlay")
