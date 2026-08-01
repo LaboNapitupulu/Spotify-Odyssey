@@ -20,12 +20,6 @@
       "dest": "/frontend/$1"
     }
   ],
-  "crons": [
-    {
-      "path": "/api/sync",
-      "schedule": "0 * * * *"
-    }
-  ],
   "headers": [
     {
       "source": "/(.*)",
