@@ -410,6 +410,10 @@ def api_recently_played(
         )
 
 
+@app.get(
+    "/api/sync",
+    dependencies=[Depends(require_private_spotify), Depends(require_database)],
+)
 @app.post(
     "/api/sync",
     dependencies=[Depends(require_private_spotify), Depends(require_database)],
