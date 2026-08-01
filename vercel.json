@@ -1,9 +1,5 @@
 {
   "version": 2,
-  "env": {
-    "ENABLE_LIVE_SPOTIFY": "true",
-    "PUBLIC_LIVE_SPOTIFY_READS": "true"
-  },
   "builds": [
     {
       "src": "api/index.py",
