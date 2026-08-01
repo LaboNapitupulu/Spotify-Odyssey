@@ -684,25 +684,21 @@ function renderHallOfFame(data) {
 }
 
 async function fetchFameWithArtwork(data, signal, requestId) {
-    renderHallOfFame(data);
     const items = [
-        ...data.artists.map((item, index) => ({
+        ...data.artists.map((item) => ({
             item,
-            key: `artist-${index}`,
             type: "artist",
             name: item.artist_name,
             artist: "",
         })),
-        ...data.albums.map((item, index) => ({
+        ...data.albums.map((item) => ({
             item,
-            key: `album-${index}`,
             type: "album",
             name: item.album_name,
             artist: item.artist_name,
         })),
-        ...data.songs.map((item, index) => ({
+        ...data.songs.map((item) => ({
             item,
-            key: `track-${index}`,
             type: "track",
             name: item.track_name,
             artist: item.artist_name,
@@ -714,7 +710,7 @@ async function fetchFameWithArtwork(data, signal, requestId) {
         if (signal.aborted || requestId !== dashboardRequestId) return;
         const batch = items.slice(offset, offset + batchSize);
         await Promise.all(
-            batch.map(async ({ key, type, name, artist }) => {
+            batch.map(async ({ item, type, name, artist }) => {
                 const query = new URLSearchParams({
                     name,
                     type,
@@ -725,11 +721,8 @@ async function fetchFameWithArtwork(data, signal, requestId) {
                         `${API_BASE}/spotify/artwork?${query}`,
                         { signal },
                     );
-                    const image = document.querySelector(
-                        `img[data-item-key="${key}"]`,
-                    );
-                    if (image && result.image_url) {
-                        image.src = safeImageURL(result.image_url);
+                    if (result.image_url) {
+                        item.image_url = result.image_url;
                     }
                 } catch (error) {
                     if (error.name !== "AbortError") {
@@ -739,6 +732,9 @@ async function fetchFameWithArtwork(data, signal, requestId) {
             }),
         );
     }
+
+    if (signal.aborted || requestId !== dashboardRequestId) return;
+    renderHallOfFame(data);
 }
 
 function renderNowPlaying(data) {
