@@ -182,7 +182,7 @@ def require_database(request: Request) -> None:
 
 def require_private_spotify(
     request: Request,
-    x_api_key: Annotated[Optional[str], Header()] = None,
+    x_api_key: Annotated[Optional[str], Header(alias="X-API-Key")] = None,
 ) -> None:
     if not LIVE_SPOTIFY_ENABLED:
         raise HTTPException(status_code=404, detail="Live Spotify features are disabled.")
@@ -192,7 +192,10 @@ def require_private_spotify(
     is_loopback = client_host in {"127.0.0.1", "::1", "localhost"}
 
     if expected_key:
-        if not x_api_key or not hmac.compare_digest(x_api_key, expected_key):
+        # Check both header and query parameter
+        provided_key = x_api_key or request.query_params.get("api_key")
+        
+        if not provided_key or not hmac.compare_digest(provided_key, expected_key):
             raise HTTPException(status_code=401, detail="Invalid private API key.")
     elif not is_loopback:
         raise HTTPException(
