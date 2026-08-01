@@ -172,6 +172,58 @@ function showToast(message) {
     window.setTimeout(() => toast.remove(), 3500);
 }
 
+// Cache frequent DOM elements
+const els = {
+    yearFilters: document.getElementById("year-filters"),
+    multiSelectToggle: document.getElementById("multi-select-toggle"),
+    kpi: {
+        airtime: document.getElementById("kpi-airtime"),
+        tracks: document.getElementById("kpi-tracks"),
+        artists: document.getElementById("kpi-artists"),
+        activeDays: document.getElementById("kpi-activedays"),
+        avgStreams: document.getElementById("kpi-avgstreams"),
+    },
+    fameGrid: document.getElementById("fame-grid"),
+    recentList: document.getElementById("recent-list"),
+    topNSlider: document.getElementById("top-n-slider"),
+    topNValue: document.getElementById("top-n-value"),
+    connStatus: document.getElementById("connection-status"),
+    errorBanner: document.getElementById("app-error"),
+    errorMessage: document.getElementById("app-error-message"),
+    hamburgerBtn: document.getElementById("hamburger-btn"),
+    sidebar: document.getElementById("filter-sidebar"),
+    sidebarOverlay: document.getElementById("sidebar-overlay"),
+};
+
+// Hamburger menu toggle logic
+function toggleSidebar(forceState = null) {
+    if (!els.sidebar || !els.hamburgerBtn || !els.sidebarOverlay) return;
+    
+    const isOpen = els.sidebar.classList.contains("open");
+    const willOpen = forceState !== null ? forceState : !isOpen;
+    
+    if (willOpen) {
+        els.sidebar.classList.add("open");
+        els.hamburgerBtn.classList.add("open");
+        els.hamburgerBtn.setAttribute("aria-expanded", "true");
+        els.sidebarOverlay.classList.add("active");
+        document.body.style.overflow = "hidden";
+    } else {
+        els.sidebar.classList.remove("open");
+        els.hamburgerBtn.classList.remove("open");
+        els.hamburgerBtn.setAttribute("aria-expanded", "false");
+        els.sidebarOverlay.classList.remove("active");
+        document.body.style.overflow = "";
+    }
+}
+
+if (els.hamburgerBtn) {
+    els.hamburgerBtn.addEventListener("click", () => toggleSidebar());
+}
+if (els.sidebarOverlay) {
+    els.sidebarOverlay.addEventListener("click", () => toggleSidebar(false));
+}
+
 async function init() {
     setupEventListeners();
     setConnectionState("checking");
@@ -260,7 +312,7 @@ function markDashboardLoading() {
         "kpi-avg-min",
     ].forEach((id) => {
         const element = document.getElementById(id);
-        element.textContent = "Loading\u2026";
+        element.textContent = "—";
         element.classList.add("kpi-loading");
     });
 }

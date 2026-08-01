@@ -915,9 +915,58 @@ tbody tr:hover {
 }
 
 @keyframes shimmer {
-    from { transform: translateX(-100%); }
-    to { transform: translateX(100%); }
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
 }
+
+.skeleton {
+    background: linear-gradient(90deg, var(--surface-raised) 25%, var(--surface-hover) 50%, var(--surface-raised) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+    border-radius: 4px;
+}
+
+.kpi-loading {
+    color: transparent !important;
+    background: linear-gradient(90deg, var(--surface-raised) 25%, var(--surface-hover) 50%, var(--surface-raised) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+    border-radius: 6px;
+    width: 60%;
+    display: inline-block;
+}
+
+.chart-overlay:not(.done) {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, var(--surface-raised) 25%, var(--surface-hover) 50%, var(--surface-raised) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+    z-index: 10;
+    opacity: 0.8;
+}
+
+.chart-overlay:not(.done) .chart-spin {
+    display: none;
+}
+
+.skeleton-text {
+    height: 1em;
+    margin-bottom: 0.5em;
+}
+
+
+.skeleton-image {
+    width: 100%;
+    height: 100%;
+}
+
+.skeleton-list-card {
+    height: 52px;
+    margin-bottom: 6px;
+}
+
+
 
 @keyframes fadeInUp {
     from { opacity: 0; transform: translateY(8px); }
